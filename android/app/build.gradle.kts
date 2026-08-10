@@ -1,0 +1,71 @@
+plugins {
+    id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+android {
+    namespace = "com.sozu.sozu_agente_app"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        // applicationId configurable por proyecto. Prioridad:
+        //  1. Variable de entorno ANDROID_PACKAGE_NAME (la inyecta el dashboard
+        //     al disparar el build en Codemagic).
+        //  2. Propiedad Gradle `sozu.applicationId` (android/gradle.properties),
+        //     para builds locales / que no reciben la env var.
+        //  3. Default de fábrica.
+        applicationId = System.getenv("ANDROID_PACKAGE_NAME")?.takeIf { it.isNotBlank() }
+            ?: (project.findProperty("sozu.applicationId") as String?)?.takeIf { it.isNotBlank() }
+            ?: "com.sozu.agentes_app"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        // Firma de release: Codemagic inyecta el keystore (android_signing:
+        // sozu_keystore) via variables CM_KEYSTORE_*. En local no existen y
+        // se cae a la firma debug para que `flutter run --release` funcione.
+        create("release") {
+            val ksPath = System.getenv("CM_KEYSTORE_PATH")
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CM_KEY_ALIAS")
+                keyPassword = System.getenv("CM_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = if (System.getenv("CM_KEYSTORE_PATH") != null)
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}

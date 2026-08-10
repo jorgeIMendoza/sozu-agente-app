@@ -1,0 +1,805 @@
+# CI/CD Codemagic - SOZU Portal del Agente (Flutter)
+# ---------------------------------------------------------------------------
+# Variables Supabase: inline en `vars` (abajo). Son valores PÚBLICOS por
+# diseño (URL + anon key van embebidos en cualquier app cliente; la seguridad
+# real está en las Edge Functions/RLS) y el repo es privado. NUNCA poner aquí
+# service_role ni credenciales de BD. El script "Crear .env" las vuelca al
+# archivo que flutter_dotenv carga como asset (el .env NUNCA se commitea).
+#
+# Requisitos de configuración en la UI de Codemagic (una sola vez):
+# 1. Android: keystore subido en Codemagic → Code signing identities, con
+#    reference name "sozu_keystore" (Codemagic puede generarlo).
+# 2. iOS: integración App Store Connect (API key) con nombre
+#    "sozu_app_store_connect" + certificados automáticos.
+# ---------------------------------------------------------------------------
+
+definitions:
+  supabase_env: &supabase_env
+    SUPABASE_URL: https://tzmhgfjmddkfyffkkmto.supabase.co
+    SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6bWhnZmptZGRrZnlmZmtrbXRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczNTU0NDUsImV4cCI6MjA3MjkzMTQ0NX0.8DaFtWO6zyJg14jFo_Zm2idYKwI-mvfmUtlixG2JDSE
+  env_setup: &env_setup
+    name: Crear assets/env desde variables de entorno
+    script: |
+      mkdir -p assets
+      cat > assets/env <<EOF
+      SUPABASE_URL=$SUPABASE_URL
+      SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+      EOF
+  build_stamp: &build_stamp
+    name: Timestamp de versión (hora México, estilo sozu-admin)
+    script: |
+      echo "BUILD_TIMESTAMP=$(TZ=America/Mexico_City date +%y%m%d.%H%M)" >> $CM_ENV
+  # Google Play exige un versionCode mayor en cada subida, y pubspec.yaml lo
+  # tiene fijo en 1.0.0+1: todo build sale como versionCode 1 y la segunda
+  # publicación falla con "Version code 1 has already been used". Se calcula a
+  # partir del mayor que ya exista en Play (incluye lo subido a mano).
+  play_build_number: &play_build_number
+    name: Calcular versionCode
+    script: |
+      PKG="${ANDROID_PACKAGE_NAME:-com.sozu.agentes_app}"
+      LATEST=$(google-play get-latest-build-number \
+        --package-name "$PKG" \
+        --credentials "@env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" 2>/dev/null || true)
+      # Sin historial legible (app nueva, o la cuenta no puede consultarlo):
+      # el contador de builds de Codemagic siempre crece, así que sirve de piso.
+      case "$LATEST" in
+        ''|*[!0-9]*) LATEST="${PROJECT_BUILD_NUMBER:-0}" ;;
+      esac
+      NEXT=$((LATEST + 1))
+      echo "ANDROID_BUILD_NUMBER=$NEXT" >> $CM_ENV
+      echo "Último versionCode en Play: $LATEST · se publicará como: $NEXT"
+
+  # Resuelve el versionName que se va a publicar. Va dentro de cada workflow que
+  # publica, no en uno aparte: como paso manual nadie lo corría y las cuatro
+  # primeras subidas a Play salieron todas como "1.0.0" (solo cambiaba el
+  # versionCode). Eso además dejaba muerto el version gate del app, que compara
+  # `appVersionBase` contra `latest_version`.
+  #
+  # El estado vive en los TAGS de git, no en un commit al repo: se publica desde
+  # `main`, que está protegida (enforce_admins + review de code owner
+  # obligatoria), así que un `push HEAD:main` desde el CI falla y se lleva la
+  # publicación con él. Los tags no están cubiertos por esa protección.
+  # pubspec.yaml y version.dart se reescriben SOLO en el workspace del build.
+  #
+  # Idempotente: si HEAD ya trae un tag vX.Y.Z, es la segunda tienda de la MISMA
+  # tanda de código y se publica con esa misma versión, así Android e iOS nunca
+  # divergen en versionName. Si no hay tag en HEAD, sube el vigesimal desde el
+  # tag más alto (sin tags todavía: desde el pubspec) y tagea HEAD.
+  bump_release_version: &bump_release_version
+    name: Resolver versionName desde tags
+    script: |
+      set -e
+      git fetch --tags --force --quiet
+      # --sort=v:refname en vez de `sort -V`: el runner es macOS y su sort BSD
+      # no ordena versiones (1.0.10 quedaría antes de 1.0.9).
+      EN_HEAD=$(git tag --points-at HEAD --list 'v[0-9]*' --sort=v:refname | tail -1)
+      ULTIMO=$(git tag --list 'v[0-9]*' --sort=v:refname | tail -1)
+      PISO=$(grep -E '^version:' pubspec.yaml | head -1 | sed -E 's/^version:[[:space:]]*//;s/\+.*//')
+      if [ -n "${VERSION_SET:-}" ]; then
+        NAME="$VERSION_SET"
+        echo "VERSION_SET: se publica $NAME (versión fijada a mano)."
+      elif [ -n "$EN_HEAD" ]; then
+        NAME="${EN_HEAD#v}"
+        echo "HEAD ya está publicado como $EN_HEAD: se reusa $NAME (misma tanda, otra tienda)."
+      else
+        BASE="${ULTIMO:-$PISO}"
+        NAME=$(bash tool/bump_version.sh --next "${BASE#v}")
+        echo "Último tag: ${ULTIMO:-ninguno} · piso del pubspec: $PISO · se publica: $NAME"
+      fi
+      bash tool/bump_version.sh --set "$NAME" >/dev/null
+      if [ "$EN_HEAD" != "v$NAME" ]; then
+        # Sin -f a propósito: si el tag ya existe en otro commit, esta versión ya
+        # se publicó y moverlo borraría el rastro. Que truene y se revise.
+        git tag "v$NAME"
+        # Codemagic clona con credenciales de SOLO LECTURA: `git push origin`
+        # devuelve 403. El push va con un token propio, acotado a este repo y a
+        # `contents: write`. Se pasa por URL efímera en vez de tocar el remoto
+        # para que no quede escrito en el .git del runner.
+        git push "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/jorgeIMendoza/sozu-agente-app.git" "v$NAME"
+        echo "Tag v$NAME apuntando a $(git rev-parse --short HEAD)"
+      fi
+      echo "APP_VERSION_NAME=$NAME" >> $CM_ENV
+
+  # Valida el token de push ANTES de compilar. Sin esto el fallo aparece en el
+  # paso 10, despues de ~10 min de build, y como un 403 que no dice que hacer.
+  # Mismo criterio que la validacion de credenciales de Google Play.
+  validar_push_token: &validar_push_token
+    name: Validar token de push al repo
+    script: |
+      if [ -z "${GITHUB_PUSH_TOKEN:-}" ]; then
+        echo "ERROR: falta GITHUB_PUSH_TOKEN."
+        echo "Codemagic clona en solo lectura, asi que no puede pushear el tag de version."
+        echo "Es un PAT fine-grained con acceso SOLO a jorgeIMendoza/sozu-agente-app y"
+        echo "permiso Contents: Read and write. Va en el grupo app_version_gate, cifrado."
+        exit 1
+      fi
+      CODIGO=$(curl -s -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer $GITHUB_PUSH_TOKEN" \
+        https://api.github.com/repos/jorgeIMendoza/sozu-agente-app)
+      if [ "$CODIGO" != "200" ]; then
+        echo "ERROR: GITHUB_PUSH_TOKEN no sirve para este repo (HTTP $CODIGO)."
+        echo "Revisar que no haya expirado y que el repo este en su lista de acceso."
+        exit 1
+      fi
+      echo "Token de push OK."
+
+  # Enciende el aviso de actualizacion in-app: escribe `latest_version` en
+  # `app_agente_config` via la edge function `app-version-publicar`.
+  #
+  # Sin esto el aviso depende de que alguien corra un UPDATE a mano despues de
+  # cada release, y eso ya fallo: la key se quedo en "1.0.0" durante los cuatro
+  # primeros lanzamientos y el banner no salio nunca.
+  #
+  # Va en publishing.scripts y solo con la publicacion en verde: si el AAB/IPA
+  # no llego a la tienda, anunciar la version nueva manda a la gente a bajar
+  # algo que no existe.
+  #
+  # APP_VERSION_PUBLISH_SECRET es variable CIFRADA en Codemagic; el mismo valor
+  # vive como secret de Supabase. No es credencial de BD: la escritura la hace
+  # la edge function con su service_role, del lado del servidor.
+  #
+  # Nota: el release queda "en revision" en la tienda un rato (Play horas, Apple
+  # dias) y el aviso sale desde ya. Se acepta a proposito: el banner es
+  # descartable y lleva a la tienda, mientras que olvidar el UPDATE apaga el
+  # aviso entero. Si molesta, la salida es un cron que consulte a la tienda.
+  publicar_version_al_gate: &publicar_version_al_gate
+    name: Anunciar la versión nueva al version gate
+    script: |
+      if [ "${CM_BUILD_STEP_STATUS:-success}" != "success" ]; then
+        echo "La publicación no terminó bien: no se anuncia la versión."
+        exit 0
+      fi
+      if [ -z "${APP_VERSION_PUBLISH_SECRET:-}" ]; then
+        echo "Sin APP_VERSION_PUBLISH_SECRET: se omite (el aviso in-app queda como estaba)."
+        exit 0
+      fi
+      # Los workflows de promocion (internal -> production, TestFlight -> App
+      # Store) no compilan, asi que no pasaron por el paso de versionName: la
+      # version que estan promoviendo es la del ultimo tag.
+      if [ -z "${APP_VERSION_NAME:-}" ]; then
+        git fetch --tags --force --quiet || true
+        ULTIMO=$(git tag --list 'v[0-9]*' --sort=v:refname | tail -1)
+        APP_VERSION_NAME="${ULTIMO#v}"
+      fi
+      if [ -z "$APP_VERSION_NAME" ]; then
+        echo "No se pudo determinar la versión (sin tags): se omite el anuncio."
+        exit 0
+      fi
+      RESP=$(curl -s -w '\n%{http_code}' -X POST "$SUPABASE_URL/functions/v1/app-version-publicar" \
+        -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+        -H "apikey: $SUPABASE_ANON_KEY" \
+        -H "x-app-version-secret: $APP_VERSION_PUBLISH_SECRET" \
+        -H "Content-Type: application/json" \
+        -d "{\"latest_version\":\"$APP_VERSION_NAME\",\"app\":\"agentes\"}")
+      CODIGO=$(echo "$RESP" | tail -1)
+      echo "app-version-publicar [$CODIGO]: $(echo "$RESP" | sed '$d')"
+      # No aborta: la app YA quedó publicada. Que falle el aviso no debe pintar
+      # de rojo un lanzamiento que sí salió; el UPDATE manual sigue disponible.
+      [ "$CODIGO" = "200" ] || echo "AVISO: latest_version no se actualizó. Correr el UPDATE a mano (ver Ejecuciones_manuales)."
+
+  # Aviso por WhatsApp al terminar (exito o fallo). El telefono lo inyecta el
+  # dashboard como WA_PHONE al lanzar el build; sin el, el paso no hace nada.
+  # Va en publishing.scripts para que corra tambien cuando el build falla.
+  wa_notify: &wa_notify
+    name: Avisar por WhatsApp
+    script: |
+      if [ -z "${WA_PHONE:-}" ]; then
+        echo "Sin WA_PHONE: no hay a quien avisar (el dashboard lo inyecta al lanzar)."
+        exit 0
+      fi
+      if [ "${CM_BUILD_STEP_STATUS:-success}" = "success" ]; then
+        RESULTADO="termino bien"
+      else
+        RESULTADO="FALLO"
+      fi
+      MENSAJE="Build de $CM_PROJECT_NAME ($CM_BRANCH) $RESULTADO: $FCI_WORKFLOW_ID. Ver: https://codemagic.io/app/$FCI_PROJECT_ID/build/$FCI_BUILD_ID"
+      curl -s -X POST "https://automatizacion-n8n.fbqqbe.easypanel.host/webhook/manda_notificacion"         -H "apikey: 80FA62E3FD0C-4477-8B31-8A2CD6AF7B57"         -H "Content-Type: application/json"         -d "$(jq -n --arg tel "+521$WA_PHONE" --arg msg "$MENSAJE"               '{tipo:"wa", telefono:$tel, mensajeWA:$msg, instanciaWA:"Pruebas de todo"}')"         && echo "Aviso enviado a $WA_PHONE"
+
+  # Keystore subido desde el dashboard (variables cifradas del grupo
+  # android_signing_custom). Reconstruye el .jks y exporta las CM_KEYSTORE_*
+  # que lee build.gradle.kts. Si sigue en PENDIENTE, aborta con mensaje claro.
+  dashboard_keystore: &dashboard_keystore
+    name: Preparar keystore (dashboard)
+    script: |
+      if [ -z "${ANDROID_KEYSTORE_B64:-}" ] || [ "$ANDROID_KEYSTORE_B64" = "PENDIENTE" ]; then
+        echo "ERROR: keystore no configurado. Súbelo desde el dashboard (Deploy App → Keystore Android → subir)."
+        exit 1
+      fi
+      echo "$ANDROID_KEYSTORE_B64" | base64 --decode > /tmp/dashboard.keystore
+      {
+        echo "CM_KEYSTORE_PATH=/tmp/dashboard.keystore"
+        echo "CM_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+        echo "CM_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+        echo "CM_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+      } >> $CM_ENV
+      echo "Keystore del dashboard listo (alias: $ANDROID_KEY_ALIAS)" 
+
+workflows:
+  android-release:
+    name: Android (.apk pruebas + .aab Play Store)
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - android_signing_custom
+      vars:
+        <<: *supabase_env
+      flutter: stable
+    scripts:
+      - *env_setup
+      - *build_stamp
+      - *dashboard_keystore
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: Build APK (pruebas en dispositivo)
+        script: |
+          flutter build apk --release \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod
+      - name: Build AAB (Google Play)
+        script: |
+          flutter build appbundle --release \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/release/*.aab
+    # Solo construye. La publicación a Google Play vive en `android-publish`.
+    publishing:
+      scripts:
+        - *wa_notify
+
+  # Construye el .aab Y lo publica en Google Play (track internal).
+  # Requiere el service account de Play Console configurado en Codemagic
+  # (env var GCLOUD_SERVICE_ACCOUNT_CREDENTIALS); sin él, el build falla.
+  android-publish:
+    name: Android → Play Store (internal)
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - android_signing_custom
+        # No anuncia la version (el track internal no es publico), pero si
+        # tagea, y el token de push vive en este grupo.
+        - app_version_gate
+      vars:
+        <<: *supabase_env
+      flutter: stable
+    scripts:
+      - *validar_push_token
+      - name: Validar credenciales de Google Play
+        script: |
+          # Fallar aquí ahorra ~10 min de build: sin este JSON la publicación
+          # revienta al final con "Expecting value: line 1 column 1 (char 0)",
+          # que es json.loads() sobre una cadena vacía.
+          if [ -z "${GCLOUD_SERVICE_ACCOUNT_CREDENTIALS:-}" ]; then
+            echo "ERROR: falta GCLOUD_SERVICE_ACCOUNT_CREDENTIALS."
+            echo "Es el JSON del service account de Play Console y debe estar en el"
+            echo "grupo 'android_signing_custom' de esta app en Codemagic."
+            echo "Se puede subir desde el dashboard: Deploy App -> Credenciales Android."
+            exit 1
+          fi
+          echo "$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" | python3 -c "import json,sys; d=json.load(sys.stdin); print('Service account:', d['client_email'])" || {
+            echo "ERROR: GCLOUD_SERVICE_ACCOUNT_CREDENTIALS no contiene un JSON valido."
+            echo "Debe ser el archivo completo, desde la primera llave hasta la ultima, sin base64."
+            exit 1
+          }
+      - *env_setup
+      - *build_stamp
+      - *dashboard_keystore
+      - *play_build_number
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      # Despues de los tests: un test rojo no debe dejar un versionName
+      # pusheado y tageado que nunca llego a la tienda.
+      - *bump_release_version
+      - name: Build AAB (Google Play)
+        script: |
+          flutter build appbundle --release \
+            --build-number=$ANDROID_BUILD_NUMBER \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+    publishing:
+      scripts:
+        - *wa_notify
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+
+  ios-release:
+    name: iOS (.ipa - solo artefacto)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: sozu_app_store_connect
+    environment:
+      vars:
+        <<: *supabase_env
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.sozu.sozuAgenteApp
+      flutter: stable
+    scripts:
+      - *env_setup
+      - *build_stamp
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: Build IPA firmado
+        script: |
+          flutter build ipa --release \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    # Solo construye. El envío a TestFlight vive en `ios-publish`.
+    publishing:
+      scripts:
+        - *wa_notify
+
+  # Construye el .ipa Y lo envía a TestFlight.
+  ios-publish:
+    name: iOS → TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: sozu_app_store_connect
+    environment:
+      groups:
+        # No anuncia la version (TestFlight no es publico), pero si tagea, y el
+        # token de push vive en este grupo.
+        - app_version_gate
+      vars:
+        <<: *supabase_env
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.sozu.sozuAgenteApp
+      flutter: stable
+    scripts:
+      - *validar_push_token
+      - *env_setup
+      - *build_stamp
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - *bump_release_version
+      - name: Build IPA firmado
+        script: |
+          # CFBundleVersion (build number interno) desde App Store Connect:
+          # Apple exige uno mayor en cada subida. El versionName visible sale de
+          # pubspec.yaml (misma fuente que Android y el footer web), asi los tres
+          # coinciden siempre.
+          APP_ID=$(app-store-connect apps list \
+            --bundle-id-identifier com.sozu.sozuAgenteApp --json 2>/dev/null \
+            | jq -r '.[0].id // empty')
+          LATEST=""
+          if [ -n "$APP_ID" ]; then
+            LATEST=$(app-store-connect get-latest-build-number "$APP_ID" 2>/dev/null || true)
+          fi
+          case "$LATEST" in ''|*[!0-9]*) LATEST="${PROJECT_BUILD_NUMBER:-0}" ;; esac
+          IOS_BUILD_NUMBER=$((LATEST + 1))
+          echo "App Store Connect: último $LATEST · CFBundleVersion a publicar: $IOS_BUILD_NUMBER"
+          flutter build ipa --release \
+            --build-number=$IOS_BUILD_NUMBER \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      scripts:
+        - *wa_notify
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  # Promueve el ÚLTIMO build ya subido a TestFlight hacia revisión de App
+  # Store (sin reconstruir). Requiere RELEASE_NOTES (lo pasa el dashboard).
+  ios-appstore:
+    name: iOS → App Store (promover desde TestFlight)
+    max_build_duration: 20
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: sozu_app_store_connect
+    environment:
+      groups:
+        - app_version_gate
+      # No compila, pero `publicar_version_al_gate` llama a la edge function y
+      # necesita la URL + anon key del proyecto.
+      vars:
+        <<: *supabase_env
+    scripts:
+      - name: Validar release notes
+        script: |
+          if [ -z "${RELEASE_NOTES:-}" ]; then
+            echo "ERROR: falta RELEASE_NOTES (comentario obligatorio de la actualización)."
+            exit 1
+          fi
+          echo "Release notes: $RELEASE_NOTES"
+      - name: Promover último build de TestFlight a App Store
+        script: |
+          set -e
+          APP_ID=$(app-store-connect apps list \
+            --bundle-id-identifier com.sozu.sozuAgenteApp --json | jq -r '.[0].id')
+          echo "Apple app id: $APP_ID"
+          BUILD_ID=$(app-store-connect builds list \
+            --app-id "$APP_ID" --processing-state VALID --limit 1 --json | jq -r '.[0].id')
+          echo "Build a promover: $BUILD_ID"
+          app-store-connect builds submit-to-app-store "$BUILD_ID" \
+            --release-type AFTER_APPROVAL \
+            --whats-new "$RELEASE_NOTES"
+
+    publishing:
+      scripts:
+        - *publicar_version_al_gate
+        - *wa_notify
+
+  # Promueve el release del track internal a production en Google Play.
+  # Requiere RELEASE_NOTES (trazabilidad; Play Console toma las notas del
+  # release - editarlas ahí si se requiere ajustar) y el service account
+  # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS configurado en Codemagic.
+  android-production:
+    name: Android → Play Store (producción)
+    max_build_duration: 15
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - app_version_gate
+      vars:
+        # No compila, pero `publicar_version_al_gate` llama a la edge function y
+        # necesita la URL + anon key del proyecto.
+        <<: *supabase_env
+        # Package/applicationId de la app en Google Play. Debe coincidir con
+        # `sozu.applicationId` de android/gradle.properties (el que lleva el
+        # AAB). Este es el DEFAULT para builds disparados sin la env var; si el
+        # dashboard dispara el build, inyecta ANDROID_PACKAGE_NAME vía API y ese
+        # valor tiene prioridad (sobreescribe este).
+        ANDROID_PACKAGE_NAME: com.sozu.agentes_app
+    scripts:
+      - name: Validar release notes
+        script: |
+          if [ -z "${RELEASE_NOTES:-}" ]; then
+            echo "ERROR: falta RELEASE_NOTES (comentario obligatorio de la actualización)."
+            exit 1
+          fi
+          echo "Release notes: $RELEASE_NOTES"
+      - name: Validar credenciales de Google Play
+        script: |
+          # Fallar aquí ahorra ~10 min de build: sin este JSON la publicación
+          # revienta al final con "Expecting value: line 1 column 1 (char 0)",
+          # que es json.loads() sobre una cadena vacía.
+          if [ -z "${GCLOUD_SERVICE_ACCOUNT_CREDENTIALS:-}" ]; then
+            echo "ERROR: falta GCLOUD_SERVICE_ACCOUNT_CREDENTIALS."
+            echo "Es el JSON del service account de Play Console y debe estar en el"
+            echo "grupo 'android_signing_custom' de esta app en Codemagic."
+            echo "Se puede subir desde el dashboard: Deploy App -> Credenciales Android."
+            exit 1
+          fi
+          echo "$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" | python3 -c "import json,sys; d=json.load(sys.stdin); print('Service account:', d['client_email'])" || {
+            echo "ERROR: GCLOUD_SERVICE_ACCOUNT_CREDENTIALS no contiene un JSON valido."
+            echo "Debe ser el archivo completo, desde la primera llave hasta la ultima, sin base64."
+            exit 1
+          }
+      - name: Promover internal → production
+        script: |
+          google-play tracks promote-release \
+            --package-name "$ANDROID_PACKAGE_NAME" \
+            --source-track internal \
+            --target-track production \
+            --credentials "@env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS"
+    publishing:
+      scripts:
+        - *publicar_version_al_gate
+        - *wa_notify
+
+  # ---------------------------------------------------------------------------
+  # Flujo SIMPLE (un solo clic): construye y publica DIRECTO a la tienda, sin
+  # pasar por Play interno / TestFlight. Es lo que dispara el dashboard cuando
+  # el proyecto está en "modo simple". Los workflows por etapas de arriba
+  # siguen existiendo para cuando se quiera probar antes de publicar.
+  # ---------------------------------------------------------------------------
+
+  # Construye el .aab y lo sube directo al track `production` de Google Play.
+  # Play lo manda a revisión automáticamente.
+  android-store:
+    name: Android → Play Store (directo)
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - android_signing_custom
+        - app_version_gate
+      vars:
+        <<: *supabase_env
+      flutter: stable
+    scripts:
+      - *validar_push_token
+      - name: Validar release notes
+        script: |
+          if [ -z "${RELEASE_NOTES:-}" ]; then
+            echo "ERROR: falta RELEASE_NOTES (comentario obligatorio de la actualización)."
+            exit 1
+          fi
+          echo "Release notes: $RELEASE_NOTES"
+      - name: Validar credenciales de Google Play
+        script: |
+          # Fallar aquí ahorra ~10 min de build: sin este JSON la publicación
+          # revienta al final con "Expecting value: line 1 column 1 (char 0)",
+          # que es json.loads() sobre una cadena vacía.
+          if [ -z "${GCLOUD_SERVICE_ACCOUNT_CREDENTIALS:-}" ]; then
+            echo "ERROR: falta GCLOUD_SERVICE_ACCOUNT_CREDENTIALS."
+            echo "Es el JSON del service account de Play Console y debe estar en el"
+            echo "grupo 'android_signing_custom' de esta app en Codemagic."
+            echo "Se puede subir desde el dashboard: Deploy App -> Credenciales Android."
+            exit 1
+          fi
+          echo "$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS" | python3 -c "import json,sys; d=json.load(sys.stdin); print('Service account:', d['client_email'])" || {
+            echo "ERROR: GCLOUD_SERVICE_ACCOUNT_CREDENTIALS no contiene un JSON valido."
+            echo "Debe ser el archivo completo, desde la primera llave hasta la ultima, sin base64."
+            exit 1
+          }
+      - *env_setup
+      - *build_stamp
+      - *dashboard_keystore
+      - *play_build_number
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      # Despues de los tests: un test rojo no debe dejar un versionName
+      # pusheado y tageado que nunca llego a la tienda.
+      - *bump_release_version
+      - name: Build AAB (Google Play)
+        script: |
+          flutter build appbundle --release \
+            --build-number=$ANDROID_BUILD_NUMBER \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+    publishing:
+      scripts:
+        - *publicar_version_al_gate
+        - *wa_notify
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: production
+
+  # Construye el .ipa, lo sube a App Store Connect y lo manda a revisión de
+  # App Store en la misma corrida. (Apple siempre pasa por App Store Connect:
+  # es el mismo upload que alimenta TestFlight, solo que aquí no se detiene ahí.)
+  ios-store:
+    name: iOS → App Store (directo)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: sozu_app_store_connect
+    environment:
+      groups:
+        - app_version_gate
+      vars:
+        <<: *supabase_env
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.sozu.sozuAgenteApp
+      flutter: stable
+    scripts:
+      - *validar_push_token
+      - name: Validar release notes
+        script: |
+          if [ -z "${RELEASE_NOTES:-}" ]; then
+            echo "ERROR: falta RELEASE_NOTES (comentario obligatorio de la actualización)."
+            exit 1
+          fi
+          echo "Release notes: $RELEASE_NOTES"
+      - *env_setup
+      - *build_stamp
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - *bump_release_version
+      - name: Build IPA firmado
+        script: |
+          # CFBundleVersion (build number interno) desde App Store Connect:
+          # Apple exige uno mayor en cada subida. El versionName visible sale de
+          # pubspec.yaml (misma fuente que Android y el footer web), asi los tres
+          # coinciden siempre.
+          APP_ID=$(app-store-connect apps list \
+            --bundle-id-identifier com.sozu.sozuAgenteApp --json 2>/dev/null \
+            | jq -r '.[0].id // empty')
+          LATEST=""
+          if [ -n "$APP_ID" ]; then
+            LATEST=$(app-store-connect get-latest-build-number "$APP_ID" 2>/dev/null || true)
+          fi
+          case "$LATEST" in ''|*[!0-9]*) LATEST="${PROJECT_BUILD_NUMBER:-0}" ;; esac
+          IOS_BUILD_NUMBER=$((LATEST + 1))
+          echo "App Store Connect: último $LATEST · CFBundleVersion a publicar: $IOS_BUILD_NUMBER"
+          flutter build ipa --release \
+            --build-number=$IOS_BUILD_NUMBER \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        # El upload a App Store Connect es el mismo para TestFlight y App Store.
+        submit_to_testflight: true
+      scripts:
+        # Post-publicación: una vez procesado el build, se manda a revisión.
+        # Mismo procedimiento que `ios-appstore`, pero sin build intermedio.
+        - name: Enviar a revisión de App Store
+          script: |
+            set -e
+            APP_ID=$(app-store-connect apps list \
+              --bundle-id-identifier com.sozu.sozuAgenteApp --json | jq -r '.[0].id')
+            BUILD_ID=$(app-store-connect builds list \
+              --app-id "$APP_ID" --processing-state VALID --limit 1 --json | jq -r '.[0].id')
+            echo "Enviando build $BUILD_ID a revisión de App Store"
+            app-store-connect builds submit-to-app-store "$BUILD_ID" \
+              --release-type AFTER_APPROVAL \
+              --whats-new "$RELEASE_NOTES"
+        - *publicar_version_al_gate
+        # Al final, para que el aviso refleje el resultado de la publicación
+        # y no solo el de la compilación.
+        - *wa_notify
+
+  # Sube la version a mano, fuera de una publicacion. Ya NO hace falta antes de
+  # publicar: los workflows de tienda corren `bump_release_version` solos. Sirve
+  # para fijar una version exacta con VERSION_SET (ej. 1.3.0) o para adelantar el
+  # salto sin construir. Deja el mismo commit + tag `vX.Y.Z` que el CI, asi el
+  # siguiente publish reconoce la version y no la vuelve a subir.
+  # Requiere que Codemagic tenga permiso de PUSH al repo (token/SSH de escritura).
+  bump-version:
+    name: Subir versión (vigesimal) y push
+    max_build_duration: 15
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - app_version_gate
+      flutter: stable
+    scripts:
+      - *validar_push_token
+      - *bump_release_version
+    publishing:
+      scripts:
+        - *wa_notify
+
+  # Sincroniza la lista de testers del dashboard con el grupo externo de
+  # TestFlight "SOZU Testers" (lo crea si no existe). Lo dispara el dashboard
+  # al agregar/quitar correos, pasando TESTER_EMAILS separados por coma.
+  # Deja el grupo EXACTAMENTE igual a la lista (agrega faltantes, quita sobrantes).
+  sync-testflight-testers:
+    name: Sync testers → TestFlight
+    max_build_duration: 15
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: sozu_app_store_connect
+    scripts:
+      - name: Sincronizar testers con TestFlight
+        script: |
+          set -euo pipefail
+          if [ -z "${TESTER_EMAILS:-}" ]; then
+            echo "ERROR: falta TESTER_EMAILS (lista separada por comas)."
+            exit 1
+          fi
+          pip3 install --quiet pyjwt cryptography requests
+          python3 <<'PY'
+          import os, time, jwt, requests
+
+          ISSUER = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          KEY_ID = os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]
+          PRIVATE_KEY = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
+          BUNDLE_ID = "com.sozu.sozuAgenteApp"
+          GROUP_NAME = "SOZU Testers"
+          desired = {e.strip().lower() for e in os.environ["TESTER_EMAILS"].split(",") if e.strip()}
+
+          token = jwt.encode(
+              {"iss": ISSUER, "iat": int(time.time()), "exp": int(time.time()) + 1200,
+               "aud": "appstoreconnect-v1"},
+              PRIVATE_KEY, algorithm="ES256", headers={"kid": KEY_ID})
+          API = "https://api.appstoreconnect.apple.com/v1"
+          H = {"Authorization": f"Bearer {token}"}
+          HJ = {**H, "Content-Type": "application/json"}
+
+          r = requests.get(f"{API}/apps", headers=H, params={"filter[bundleId]": BUNDLE_ID})
+          r.raise_for_status()
+          app_id = r.json()["data"][0]["id"]
+
+          r = requests.get(f"{API}/betaGroups", headers=H,
+                           params={"filter[app]": app_id, "filter[name]": GROUP_NAME})
+          r.raise_for_status()
+          groups = r.json()["data"]
+          if groups:
+              gid = groups[0]["id"]
+          else:
+              r = requests.post(f"{API}/betaGroups", headers=HJ, json={"data": {
+                  "type": "betaGroups",
+                  "attributes": {"name": GROUP_NAME},
+                  "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
+              r.raise_for_status()
+              gid = r.json()["data"]["id"]
+              print(f"Grupo '{GROUP_NAME}' creado.")
+
+          current = {}
+          url = f"{API}/betaGroups/{gid}/betaTesters?limit=200"
+          while url:
+              r = requests.get(url, headers=H)
+              r.raise_for_status()
+              d = r.json()
+              for t in d["data"]:
+                  em = (t["attributes"].get("email") or "").lower()
+                  if em:
+                      current[em] = t["id"]
+              url = d.get("links", {}).get("next")
+
+          errores = 0
+          for em in sorted(desired - set(current)):
+              r = requests.post(f"{API}/betaTesters", headers=HJ, json={"data": {
+                  "type": "betaTesters",
+                  "attributes": {"email": em},
+                  "relationships": {"betaGroups": {"data": [{"type": "betaGroups", "id": gid}]}}}})
+              if r.status_code >= 400:
+                  print(f"ERROR al agregar {em}: {r.text}")
+                  errores += 1
+              else:
+                  print(f"+ {em} (invitado)")
+
+          extras = {em: tid for em, tid in current.items() if em not in desired}
+          if extras:
+              r = requests.delete(f"{API}/betaGroups/{gid}/relationships/betaTesters",
+                                  headers=HJ,
+                                  json={"data": [{"type": "betaTesters", "id": t} for t in extras.values()]})
+              if r.status_code >= 400:
+                  print(f"ERROR al quitar testers: {r.text}")
+                  errores += 1
+              else:
+                  for em in extras:
+                      print(f"- {em} (removido)")
+
+          print(f"Sync terminado: {len(desired)} testers en '{GROUP_NAME}'.")
+          raise SystemExit(1 if errores else 0)
+          PY
+
+  web-release:
+    name: Web (build estático para hosting)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        <<: *supabase_env
+      flutter: stable
+    scripts:
+      - *env_setup
+      - *build_stamp
+      - name: Dependencias, análisis y tests
+        script: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: Build web
+        script: |
+          flutter build web --release \
+            --dart-define=BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+            --dart-define=APP_ENV=prod
+      - name: Empaquetar
+        script: |
+          cd build/web && zip -r ../web-release.zip .
+    artifacts:
+      - build/web-release.zip

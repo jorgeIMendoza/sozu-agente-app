@@ -1,0 +1,51 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+# The following line activates a set of recommended lints for Flutter apps,
+# packages, and plugins designed to encourage good coding practices.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Artefactos de build: en CI (Codemagic) el build iOS deja los checkouts
+    # de SwiftPM en build/ios/SourcePackages y `flutter analyze` intentaba
+    # analizar los tests de esos paquetes (mockito inexistente → build roto).
+    - build/**
+
+linter:
+  # Para desactivar una regla en un solo punto, usar `// ignore: nombre_regla`
+  # en la línea, o `// ignore_for_file: nombre_regla` en el archivo - no quitarla
+  # de aquí.
+  rules:
+    # Imports SIEMPRE `package:sozu_agente_app/...`, nunca `../../`.
+    #
+    # Es el equivalente del alias `@/` de TypeScript: la ruta no depende de dónde
+    # está el archivo que importa, así que mover un archivo de carpeta no rompe
+    # nada ni obliga a recalcular `../../..`. Dart no permite definir alias
+    # arbitrarios (no hay `@/ui`), pero `package:` cumple la misma función.
+    - always_use_package_imports
+
+    # `late final x = ...` en vez de un getter que recalcula.
+    - prefer_final_locals
+
+    # Un `Future` sin await ni `unawaited()` casi siempre es un bug de orden.
+    - unawaited_futures
+
+    # Tipo de retorno explícito: sin esto un `dynamic` implícito se cuela y no
+    # hay error hasta runtime.
+    - always_declare_return_types
+
+    # `dynamic.metodo()` no lo verifica nadie. Hay 95 `dynamic` en models.dart.
+    - avoid_dynamic_calls
+
+    # Los puentes @Deprecated (providers viejos en espanol -> nuevos en ingles,
+    # features/client) deben marcar CADA uso pendiente: ese conteo es la lista
+    # de trabajo de la fase 2 y la feature no se cierra hasta que sea 0.
+    - deprecated_member_use_from_same_package
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options

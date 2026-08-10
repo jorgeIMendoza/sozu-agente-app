@@ -1,0 +1,116 @@
+name: sozu_agente_app
+description: "SOZU - Portal del Agente (Flutter multiplataforma)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Solo web (import condicional en core/url_strategy.dart): quita el # de las
+  # URLs. Va del SDK, no añade peso a los builds de Android/iOS.
+  flutter_web_plugins:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.8.0
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.0
+  flutter_dotenv: ^5.2.1
+  flutter_secure_storage: ^9.2.2
+  local_auth: ^2.3.0
+  # Preferencia de tema claro/oscuro (shared/providers/theme_provider.dart). NO
+  # para tokens: eso va en flutter_secure_storage.
+  shared_preferences: ^2.3.3
+  intl: ^0.20.0
+  url_launcher: ^6.3.1
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
+  photo_view: ^0.15.0
+  pdfx: ^2.9.2
+  http: ^1.6.0
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+  geolocator: ^14.0.2
+  firebase_core: ^4.11.0
+  firebase_messaging: ^16.4.1
+  device_info_plus: ^12.4.0
+  web: ^1.1.1
+  file_selector: ^1.0.3
+  share_plus: ^10.1.4
+  archive: ^4.0.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Generación de íconos de launcher (Android/iOS) a partir del ícono SOZU.
+  flutter_launcher_icons: ^0.14.3
+  # Usado por tool/gen_icons.dart para derivar el foreground del adaptive icon
+  # y las siluetas blancas del ícono de notificación (ic_stat_sozu).
+  image: ^4.5.4
+
+# Config de flutter_launcher_icons. Ícono del launcher = wordmark "sozu" negro
+# sobre blanco, igual que el ícono de la ficha de Play Store. Fuente compuesta
+# por tool/gen_wordmark_icons (assets/sozu-logo-black.png centrado sobre blanco).
+flutter_launcher_icons:
+  image_path: "assets/icon/ic_launcher_store.png"
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  # Adaptive icon (Android 8+): fondo BLANCO de marca + wordmark negro recortado
+  # sobre transparente, centrado en la safe zone, para que el launcher muestre
+  # el "sozu" de SOZU (no el logo de Flutter ni el pin).
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/ic_launcher_foreground.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    # NOTA: no usar un archivo con punto inicial (.env) como asset - Flutter lo
+    # excluye del AssetManifest en el build web release y dotenv falla (pantalla
+    # blanca). Se usa assets/env (sin punto). El archivo está gitignored.
+    - assets/env
+    # Logo SOZU (negro) usado en el login/recuperar contraseña. Copia exacta del
+    # asset del portal admin (src/assets/sozu-logo-black.png).
+    - assets/sozu-logo-black.png
+    # Imagen del panel de marca del login (columna izquierda en desktop).
+    # 1403x1403; se recorta con BoxFit.cover.
+    - assets/images/bg-sozu.jpg
+    # QR para descargar la app (login + modal "Descargar app" del portal web).
+    - assets/images/sozu-qr-web.png
+
+  # Inter: tipografía de interfaz de la app entera (ver lib/core/theme.dart).
+  # Se eligió por ser lo más cercano al `system-ui` del navegador (Segoe UI en
+  # Windows, SF Pro en macOS/iOS, Roboto en Android) manteniendo el MISMO
+  # render en las tres plataformas - en web no se puede usar `system-ui` real
+  # porque CanvasKit rasteriza el texto él mismo y solo ve fuentes empaquetadas.
+  #
+  # Los .ttf están subseteados a latin + latin-ext + puntuación/símbolos
+  # (pyftsubset): 57 KB por peso en vez de 410 KB. Si hace falta otro alfabeto,
+  # regenerar ampliando el rango de unicodes, no sustituir por el TTF completo.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
+    # Poppins: geométrica redondeada, solo para títulos y botones (ver
+    # lib/core/typography.dart). No se usa en texto corrido: a 12-13 px rinde
+    # peor que Inter. Solo se empaquetan los 3 pesos usados (16 KB c/u).
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-ExtraBold.ttf
+          weight: 800
