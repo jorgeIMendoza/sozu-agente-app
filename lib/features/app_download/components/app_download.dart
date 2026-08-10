@@ -42,7 +42,7 @@ class AppQrPanel extends StatelessWidget {
           SizedBox(height: t.space.xs),
         ],
         Text(
-          'Escanea el codigo con tu telefono para instalarla.',
+          'Escanea el código con tu teléfono para instalarla.',
           style: t.text.bodySmall.copyWith(color: t.color.fgMuted),
           textAlign: TextAlign.center,
         ),
@@ -114,7 +114,7 @@ class AppQrCard extends StatelessWidget {
                 ),
                 SizedBox(height: t.space.xxs),
                 Text(
-                  'Escanea el codigo con tu telefono para instalarla.',
+                  'Escanea el código con tu teléfono para instalarla.',
                   style: t.text.bodySmall.copyWith(color: t.color.fgMuted),
                 ),
               ],
