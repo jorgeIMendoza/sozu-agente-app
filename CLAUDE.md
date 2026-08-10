@@ -99,9 +99,23 @@ El acceso administrador ("ver como agente") es OTRA COSA: va por
 - Documentos/recibos/CEP: URLs firmadas temporales que entrega el backend.
 
 ## Design system - lib/ui/ (FUENTE DE VERDAD de la apariencia)
-Este repo es la fuente de verdad del Portal del Agente. `sozu-admin` YA NO se
-trabaja para el portal cliente; su `src/components/portal/` es legacy.
+Este repo es la fuente de verdad de la apariencia del Portal del Agente. El
+portal web (`sozu-admin`, `/admin/agent/*`) es la fuente de la FUNCIONALIDAD, no
+del diseño: es React con Shadcn y aquí el equivalente son los primitivos `S*`.
 
+- **Antes de escribir un widget, busca el primitivo.** `lib/ui/primitives/` es el
+  Shadcn de este repo: `SButton`, `SCard`, `SBadge`, `SAvatar`, `SChoiceChip`,
+  `STextField`, `SSelectField`, `SSearchField`, `SAutocompleteField`,
+  `SFieldLabel`, `SSectionLabel`, `SDocUpload`, `SDropZone`, `SPdfPreview`,
+  `SProgressBar`, `SSkeleton`, `SEmptyState`, `SErrorState`, `SConfirmDialog`,
+  `SPressable`, `SStaggered`/`SFadeInUp`, `SLogo`, `SWebSelectable`. Un
+  `Container` con `BoxDecoration` donde cabía un `SCard`, o un `ElevatedButton`
+  donde cabía un `SButton`, es un hallazgo de review: por ahí se bifurca la
+  apariencia entre pantallas. Cargando = `SSkeleton`, vacío = `SEmptyState`,
+  error = `SErrorState`.
+- Un componente **reutilizable pero con dominio** (tarjeta de negocio, fila de
+  comisión, visor de planos) va en `features/<f>/components/`, NO en `lib/ui/`.
+  `lib/ui/` solo crece con lo genérico y sin dominio.
 - `lib/ui/` es el design system. Import único: `import '../ui/ui.dart';`
 - Acceso a tokens: **`context.s`**
   - `context.s.color.<rol>` - 27 roles semánticos (`fg`, `fgMuted`, `fgSubtle`,

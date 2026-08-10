@@ -1,3 +1,4 @@
-# Dueños por defecto de todo el repo. Requerido por la protección de ramas
-# (require code owner reviews) de main y dev.
+# Dueños por defecto de todo el repo. Requerido por la protección de rama de
+# `main` (require code owner reviews): sin este archivo, ningún PR puede
+# satisfacer ese requisito y `main` queda inmergeable.
 * @jorgeIMendoza

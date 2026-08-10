@@ -2,6 +2,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sozu_agente_app/shared/api_error.dart';
 
+// Los helpers de parseo viven en shared/json.dart: los usan los modelos de
+// los puertos, y un puerto no puede importar nada que nombre la tecnología.
+export 'package:sozu_agente_app/shared/json.dart';
+
 /// Llamador único de Edge Functions con el JWT del usuario.
 ///
 /// Existe para que los ocho adaptadores del portal (`sesion`, `inicio`,
@@ -55,31 +59,4 @@ class EdgeFunctions {
       throw ApiError(0, 'network_error');
     }
   }
-}
-
-/// Lee una lista de mapas de una respuesta de Edge Function. Tolera la clave
-/// ausente y devuelve lista vacía: el backend degrada a payload vacío cuando una
-/// tabla todavía no existe, y la pantalla debe pintarse igual.
-List<Map<String, dynamic>> listaDe(Object? valor) {
-  if (valor is! List) return const [];
-  return valor
-      .whereType<Map>()
-      .map((e) => Map<String, dynamic>.from(e))
-      .toList(growable: false);
-}
-
-/// Lee un mapa anidado. Devuelve mapa vacío si falta, por la misma razón.
-Map<String, dynamic> mapaDe(Object? valor) =>
-    valor is Map ? Map<String, dynamic>.from(valor) : const {};
-
-/// Número tolerante: el backend manda `numeric` de Postgres como String.
-double numDe(Object? valor) {
-  if (valor is num) return valor.toDouble();
-  return double.tryParse('${valor ?? ''}') ?? 0;
-}
-
-int? intDe(Object? valor) {
-  if (valor is int) return valor;
-  if (valor is num) return valor.toInt();
-  return int.tryParse('${valor ?? ''}');
 }
