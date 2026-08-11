@@ -201,7 +201,7 @@ class AuthController extends ChangeNotifier {
       AuthFailure.tooManyAttempts =>
         'Demasiadas solicitudes. Espera unos minutos y vuelve a intentar.',
       AuthFailure.network =>
-        'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
       _ => 'No pudimos reenviar el correo. Contacta a soporte.',
     };
   }
@@ -211,7 +211,7 @@ class AuthController extends ChangeNotifier {
   /// Vive aquí y no en la pantalla porque el mapa fallo→mensaje es política de
   /// auth, no de UI. La causa ([AuthFailure]) ya viene traducida del adaptador.
   ///
-  /// Antes todo caía en "Correo o contrasena incorrectos", incluido el límite
+  /// Antes todo caía en "Correo o contraseña incorrectos", incluido el límite
   /// de intentos y la red caída: el usuario reintentaba con la contraseña
   /// correcta y volvía a fallar sin saber por qué.
   static String signInErrorMessage(Object e) {
@@ -221,10 +221,10 @@ class AuthController extends ChangeNotifier {
       AuthFailure.tooManyAttempts =>
         'Demasiados intentos. Espera un minuto y vuelve a probar.',
       AuthFailure.emailNotConfirmed =>
-        'Tu correo aun no esta confirmado. Revisa tu bandeja.',
+        'Tu correo aún no está confirmado. Revisa tu bandeja.',
       AuthFailure.network =>
-        'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
-      _ => 'Correo o contrasena incorrectos.',
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
+      _ => 'Correo o contraseña incorrectos.',
     };
   }
 
@@ -236,7 +236,7 @@ class AuthController extends ChangeNotifier {
       AuthFailure.tooManyAttempts =>
         'Demasiadas solicitudes. Espera unos minutos y vuelve a intentar.',
       AuthFailure.network =>
-        'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
       _ => 'No pudimos enviar el correo. Intenta de nuevo o escribe a soporte.',
     };
   }
@@ -244,23 +244,23 @@ class AuthController extends ChangeNotifier {
   /// Mensaje para un fallo de [updatePassword] o [changePassword].
   static String changePasswordErrorMessage(Object e) {
     if (e is WrongCurrentPasswordError) {
-      return 'Tu contrasena actual no es correcta.';
+      return 'Tu contraseña actual no es correcta.';
     }
     final reason = e is AuthError ? e.reason : AuthFailure.network;
     return switch (reason) {
       AuthFailure.tooManyAttempts =>
         'Demasiados intentos. Espera un minuto y vuelve a probar.',
       AuthFailure.network =>
-        'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
       AuthFailure.sessionRevoked =>
-        'Tu sesion expiro. Vuelve a iniciar sesion e intenta de nuevo.',
+        'Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.',
       AuthFailure.samePassword =>
-        'Esa ya es tu contrasena actual. Elige una distinta.',
+        'Esa ya es tu contraseña actual. Elige una distinta.',
       AuthFailure.weakPassword =>
-        'Esa contrasena es facil de adivinar (aparece en filtraciones '
+        'Esa contraseña es fácil de adivinar (aparece en filtraciones '
             'conocidas). Cumple las reglas, pero elige otra menos comun.',
       _ =>
-        'No pudimos actualizar la contrasena. Revisa que cumpla los '
+        'No pudimos actualizar la contraseña. Revisa que cumpla los '
             'requisitos e intenta de nuevo.',
     };
   }
@@ -317,10 +317,10 @@ class AuthController extends ChangeNotifier {
     final reason = e is AuthError ? e.reason : AuthFailure.network;
     return switch (reason) {
       AuthFailure.network =>
-        'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+        'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
       _ =>
-        'El enlace vencio o ya se uso (dura 24 horas). Pide uno nuevo desde '
-            '"¿Olvidaste tu contrasena?".',
+        'El enlace venció o ya se usó (dura 24 horas). Pide uno nuevo desde '
+            '"¿Olvidaste tu contraseña?".',
     };
   }
 

@@ -10,7 +10,7 @@ import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.
 import 'package:sozu_agente_app/features/admin/screens/announcements_screen.dart';
 import 'package:sozu_agente_app/features/auth/screens/change_password_screen.dart';
 import 'package:sozu_agente_app/features/agente/comisiones/screens/comisiones_screen.dart';
-import 'package:sozu_agente_app/features/agente/perfil/expediente/screens/expediente_screen.dart';
+import 'package:sozu_agente_app/features/agente/perfil/screens/perfil_expediente_screen.dart';
 import 'package:sozu_agente_app/features/auth/screens/confirmacion_email_screen.dart';
 import 'package:sozu_agente_app/features/auth/screens/email_not_confirmed_screen.dart';
 import 'package:sozu_agente_app/features/auth/screens/forgot_password_screen.dart';
@@ -321,7 +321,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/perfil/expediente',
             pageBuilder: (context, state) =>
-                _slidePage(context, state, const ExpedienteScreen()),
+                _slidePage(context, state, const PerfilExpedienteScreen()),
           ),
           GoRoute(
             path: '/perfil/identidad',

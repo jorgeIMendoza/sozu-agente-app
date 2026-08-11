@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:334194000163:android:3faec92654ee45a09a8c96",
+        "mobilesdk_app_id": "1:334194000163:android:6800f8d827ea4c9c9a8c96",
         "android_client_info": {
-          "package_name": "com.sozu.clientes_app"
+          "package_name": "com.sozu.agentes_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "334194000163-1sdh5ubsbped9ntn8opislr96l36se5g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBi_e43N8DiR34RwAYaAJKeTlNzGoVCAzk"
@@ -20,18 +25,35 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "334194000163-1sdh5ubsbped9ntn8opislr96l36se5g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "334194000163-m0jkouk4dikhilsfrhq1p1s74fb1d95q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.sozu.sozuClienteApp"
+              }
+            }
+          ]
         }
       }
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:334194000163:android:0ef2d32f5637bc219a8c96",
+        "mobilesdk_app_id": "1:334194000163:android:3faec92654ee45a09a8c96",
         "android_client_info": {
-          "package_name": "com.sozu.sozu_agente_app"
+          "package_name": "com.sozu.clientes_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "334194000163-1sdh5ubsbped9ntn8opislr96l36se5g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBi_e43N8DiR34RwAYaAJKeTlNzGoVCAzk"
@@ -39,7 +61,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "334194000163-1sdh5ubsbped9ntn8opislr96l36se5g.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "334194000163-m0jkouk4dikhilsfrhq1p1s74fb1d95q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.sozu.sozuClienteApp"
+              }
+            }
+          ]
         }
       }
     }

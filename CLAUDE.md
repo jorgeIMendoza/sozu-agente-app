@@ -9,9 +9,17 @@ aplique a los dos va a los dos.
 Código compartido en `lib/`; plataformas: `android/`, `ios/` (build requiere Mac),
 `web/` (target principal de prueba: Chrome).
 
+## Ambiente: PRODUCCIÓN y nada más
+Esta app **no tiene ambiente de desarrollo propio**, igual que la del cliente.
+`assets/env` apunta al proyecto de producción (`tzmhgfjmddkfyffkkmto`) y el
+localhost consume las Edge Functions productivas. Consecuencia práctica: lo que
+se prueba en localhost es exactamente lo que ve el agente, y **toda escritura de
+prueba cae en datos reales** — al probar, preferir lecturas y usuarios de prueba.
+
 Las Edge Functions `agente-*` que alimentan el app viven en el repo
-`sozu-edge-functions`, NO aquí: se editan y despliegan allá (rama `dev` → VPS de
-desarrollo, `main` → Supabase Cloud de producción).
+`sozu-edge-functions`, NO aquí. Ahí sí hay dos ambientes y el ciclo es `dev` →
+VPS de desarrollo, `main` → Supabase Cloud de producción; esta app solo consume
+lo que ya está en `main`.
 
 ## Stack
 - Flutter stable (SDK en ~/flutter dentro de WSL/Arch) + Dart. Material 3.
@@ -99,9 +107,23 @@ El acceso administrador ("ver como agente") es OTRA COSA: va por
 - Documentos/recibos/CEP: URLs firmadas temporales que entrega el backend.
 
 ## Design system - lib/ui/ (FUENTE DE VERDAD de la apariencia)
-Este repo es la fuente de verdad del Portal del Agente. `sozu-admin` YA NO se
-trabaja para el portal cliente; su `src/components/portal/` es legacy.
+Este repo es la fuente de verdad de la apariencia del Portal del Agente. El
+portal web (`sozu-admin`, `/admin/agent/*`) es la fuente de la FUNCIONALIDAD, no
+del diseño: es React con Shadcn y aquí el equivalente son los primitivos `S*`.
 
+- **Antes de escribir un widget, busca el primitivo.** `lib/ui/primitives/` es el
+  Shadcn de este repo: `SButton`, `SCard`, `SBadge`, `SAvatar`, `SChoiceChip`,
+  `STextField`, `SSelectField`, `SSearchField`, `SAutocompleteField`,
+  `SFieldLabel`, `SSectionLabel`, `SDocUpload`, `SDropZone`, `SPdfPreview`,
+  `SProgressBar`, `SSkeleton`, `SEmptyState`, `SErrorState`, `SConfirmDialog`,
+  `SPressable`, `SStaggered`/`SFadeInUp`, `SLogo`, `SWebSelectable`. Un
+  `Container` con `BoxDecoration` donde cabía un `SCard`, o un `ElevatedButton`
+  donde cabía un `SButton`, es un hallazgo de review: por ahí se bifurca la
+  apariencia entre pantallas. Cargando = `SSkeleton`, vacío = `SEmptyState`,
+  error = `SErrorState`.
+- Un componente **reutilizable pero con dominio** (tarjeta de negocio, fila de
+  comisión, visor de planos) va en `features/<f>/components/`, NO en `lib/ui/`.
+  `lib/ui/` solo crece con lo genérico y sin dominio.
 - `lib/ui/` es el design system. Import único: `import '../ui/ui.dart';`
 - Acceso a tokens: **`context.s`**
   - `context.s.color.<rol>` - 27 roles semánticos (`fg`, `fgMuted`, `fgSubtle`,

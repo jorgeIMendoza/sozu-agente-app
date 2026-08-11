@@ -76,7 +76,7 @@ void main() {
     expect(error, isA<AuthError>());
     expect(
       AuthController.signInErrorMessage(error!),
-      'Correo o contrasena incorrectos.',
+      'Correo o contraseña incorrectos.',
     );
     expect(controller.session, isNull);
   });
@@ -88,18 +88,18 @@ void main() {
     );
     expect(
       AuthController.signInErrorMessage(AuthError(AuthFailure.network)),
-      'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+      'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
     );
     expect(
       AuthController.signInErrorMessage(
         AuthError(AuthFailure.emailNotConfirmed),
       ),
-      'Tu correo aun no esta confirmado. Revisa tu bandeja.',
+      'Tu correo aún no está confirmado. Revisa tu bandeja.',
     );
     // Sin AuthError no hubo respuesta del servidor: fue la red.
     expect(
       AuthController.signInErrorMessage(Exception('boom')),
-      'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+      'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
     );
   });
 
@@ -139,7 +139,7 @@ void main() {
     );
     expect(
       AuthController.resetPasswordErrorMessage(AuthError(AuthFailure.network)),
-      'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+      'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
     );
     expect(
       AuthController.resetPasswordErrorMessage(AuthError(AuthFailure.unknown)),
@@ -155,7 +155,7 @@ void main() {
       AuthController.changePasswordErrorMessage(
         AuthError(AuthFailure.samePassword),
       ),
-      'Esa ya es tu contrasena actual. Elige una distinta.',
+      'Esa ya es tu contraseña actual. Elige una distinta.',
     );
     expect(
       AuthController.changePasswordErrorMessage(
@@ -168,17 +168,17 @@ void main() {
   test('changePasswordErrorMessage distingue la contraseña actual', () {
     expect(
       AuthController.changePasswordErrorMessage(WrongCurrentPasswordError()),
-      'Tu contrasena actual no es correcta.',
+      'Tu contraseña actual no es correcta.',
     );
     expect(
       AuthController.changePasswordErrorMessage(
         AuthError(AuthFailure.sessionRevoked),
       ),
-      'Tu sesion expiro. Vuelve a iniciar sesion e intenta de nuevo.',
+      'Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.',
     );
     expect(
       AuthController.changePasswordErrorMessage(AuthError(AuthFailure.network)),
-      'No pudimos conectar. Revisa tu conexion e intenta de nuevo.',
+      'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
     );
   });
 

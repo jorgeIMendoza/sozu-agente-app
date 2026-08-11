@@ -60,3 +60,6 @@ Ejecuciones_manuales/*
 # skills-lock.json, que SI se commitea: trae origen y hash de cada una.
 .agents/
 .claude/
+
+# Respaldos locales del env (assets/env ya esta ignorado, pero los .bak se colaban).
+assets/env*

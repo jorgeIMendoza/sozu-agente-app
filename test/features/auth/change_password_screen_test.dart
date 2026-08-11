@@ -124,7 +124,7 @@ void main() {
     await fillAndSubmit(tester, 'NuevaSegura9!');
 
     expect(
-      find.text('No pudimos conectar. Revisa tu conexion e intenta de nuevo.'),
+      find.text('No pudimos conectar. Revisa tu conexión e intenta de nuevo.'),
       findsOneWidget,
     );
     expect(container.read(passwordChangedProvider), isFalse);

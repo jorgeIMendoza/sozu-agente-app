@@ -1,3 +1,12 @@
-# Dueños por defecto de todo el repo. Requerido por la protección de ramas
-# (require code owner reviews) de main y dev.
-* @jorgeIMendoza
+# Dueños por defecto de todo el repo. Requerido por la protección de rama de
+# `main` (require code owner reviews): sin este archivo, ningún PR puede
+# satisfacer ese requisito y `main` queda inmergeable.
+#
+# Van DOS personas a propósito: GitHub no deja que el autor de un PR apruebe su
+# propio PR, así que con un solo code owner cualquier PR que él abra queda
+# bloqueado para siempre. El segundo nombre es lo que hace que la regla sea
+# satisfacible en la práctica.
+#
+# OJO: GitHub lee este archivo de la rama BASE del PR (`main`), no de la rama que
+# se está mergeando. Un cambio aquí no surte efecto hasta que llega a `main`.
+* @jorgeIMendoza @jorge-mendoza-corella

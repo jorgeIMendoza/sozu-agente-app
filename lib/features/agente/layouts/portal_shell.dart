@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sozu_agente_app/core/portal_theme.dart';
 import 'package:sozu_agente_app/core/version.dart';
 import 'package:sozu_agente_app/features/auth/providers/auth_provider.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/home_providers.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 import 'package:sozu_agente_app/features/agente/providers/agente_providers.dart';
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
 import 'package:sozu_agente_app/features/app_download/components/app_download.dart';
@@ -268,7 +268,7 @@ class _PortalSidebar extends ConsumerWidget {
     final imp = ref.watch(impersonationProvider);
     final impersonando = auth.isSuperAdmin && imp.active;
     final noLeidas =
-        ref.watch(notificationsProvider).valueOrNull?.noLeidas ?? 0;
+        ref.watch(notificacionesProvider).valueOrNull?.noLeidas ?? 0;
     final nombre =
         auth.profile?.displayName ?? auth.profile?.email ?? 'Usuario';
     final navItems = ref.watch(menuAgenteProvider);

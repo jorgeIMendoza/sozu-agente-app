@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Variantes de la animación de llegada de notificaciones (configurables por
-/// el admin en "Enviar avisos"; llegan al cliente vía cliente-notificaciones).
+/// el admin en "Enviar avisos"; llegan al agente vía agente-notificaciones).
 enum AnimacionCampana {
   sobre('sobre', 'Sobre volador ✉️'),
   gol('gol', 'Gol ⚽'),

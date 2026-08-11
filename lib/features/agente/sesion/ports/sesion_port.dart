@@ -1,4 +1,4 @@
-import 'package:sozu_agente_app/shared/adapters/edge_function.dart';
+import 'package:sozu_agente_app/shared/json.dart';
 
 /// Rutas del portal. Son las mismas que las del portal web (`/admin/agent/*`)
 /// SIN el prefijo, porque `submenus.vista_front_end` en la BD guarda la ruta

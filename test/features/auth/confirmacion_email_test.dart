@@ -126,7 +126,7 @@ void main() {
     await pumpConfirmacion(tester, port, tokenHash: 'token-quemado');
 
     expect(find.text('No pudimos confirmar tu correo'), findsOneWidget);
-    expect(find.textContaining('vencio o ya se uso'), findsOneWidget);
+    expect(find.textContaining('venció o ya se usó'), findsOneWidget);
     expect(find.text('INICIO'), findsNothing);
   });
 
@@ -157,7 +157,7 @@ void main() {
       AuthController.confirmEmailErrorMessage(
         AuthError(AuthFailure.sessionRevoked),
       ),
-      contains('vencio o ya se uso'),
+      contains('venció o ya se usó'),
     );
   });
 }

@@ -94,21 +94,30 @@ compila sin optimizar y es varias veces mas lento que produccion. Medir con
 
 Flujo diario, USB y diagnostico: `tool/README.md`.
 
-## Puesta en marcha (lo que NO se puede hacer desde el repo)
+## Puesta en marcha
 
-Este repo nace de `sozu-cliente-app`, así que hereda su CI ya cableado. Lo que
-falta vive en consolas externas y hay que hacerlo a mano:
+Este repo nace de `sozu-cliente-app`, así que hereda su CI ya cableado.
+
+### Ya hecho (Firebase, proyecto `sozu-admin-prd`)
+
+| Qué | Valor |
+| --- | --- |
+| Site de hosting | `sozu-agente-app` → https://sozu-agente-app.web.app |
+| App Android | `SOZU Agentes Android`, package `com.sozu.agentes_app`, appId `1:334194000163:android:6800f8d827ea4c9c9a8c96` |
+| App iOS | `SOZU Agentes iOS`, bundle `com.sozu.sozuAgenteApp`, appId `1:334194000163:ios:02fe9a130f72d2209a8c96` |
+| Config en el repo | `android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist` y `lib/firebase_options.dart` bajados de esas apps |
+| Tablas de push y version gate | migración `20260810020000_portal_agentes_app_infra.sql`, aplicada en producción |
+
+### Falta a mano
 
 | Qué | Dónde | Sin esto |
 | --- | --- | --- |
-| Site de hosting `sozu-agente-app` | Firebase console → Hosting | el deploy web falla |
-| App Android del bundle `com.sozu.agentes_app` y app iOS `com.sozu.sozuAgenteApp` | Firebase console → Configuración | **el build de Android falla**: el `google-services.json` del repo todavía es el de la app de clientes y el plugin de Google Services aborta con "No matching client found for package name" |
-| Reemplazar `android/app/google-services.json` y `lib/firebase_options.dart` | salida de `flutterfire configure` | push notifications registran en la app equivocada |
-| Secrets del repo: `FIREBASE_SERVICE_ACCOUNT_SOZU_CLIENTE_PRD`, `FIREBASE_GCP_DEV`, `DOCS_REPO_TOKEN`, `ANTHROPIC_API_KEY` | GitHub → Settings → Secrets | los workflows fallan (mismos valores que en `sozu-cliente-app`) |
-| Secrets de Edge Functions: `PORTAL_WEB_URL`, `MIFIEL_ENVIRONMENT`, opcional `AGENTE_ROL_IDS` | Supabase (dashboard en prod, `.env` del stack en el VPS de dev) | los links digitales apuntan al host equivocado y la firma Mifiel cancela documentos creados desde la web |
+| Secrets del repo: `FIREBASE_SERVICE_ACCOUNT_SOZU_CLIENTE_PRD`, `FIREBASE_GCP_DEV`, `DOCS_REPO_TOKEN`, `ANTHROPIC_API_KEY` | GitHub → Settings → Secrets | el deploy web falla (mismos valores que en `sozu-cliente-app`) |
+| **Llave APNs** de la app iOS | Firebase → Cloud Messaging → Apple app configuration | el push de iOS no sale; Android sí funciona. Requiere cuenta de Apple Developer |
+| Secrets de Edge Functions: `PORTAL_WEB_URL`, `MIFIEL_ENVIRONMENT` | Supabase → Edge Functions → Secrets | los links digitales apuntan al host equivocado y la firma Mifiel cancela documentos creados desde la web |
+| Trigger de despacho de push para `notificaciones_agente` | repos `sozu-supabase-migrations` + `sozu-edge-functions` | una notificación insertada para un agente se guarda pero no se empuja: `notificaciones-push` hoy solo entiende las tablas del cliente |
 | App en Play Console y en App Store Connect | consolas de tienda | los pipelines de publicación no tienen a dónde subir |
-| Redirect URL `https://agentes.sozu.com/auth/confirmacion-email` | Supabase Auth → URL Configuration | el enlace de recuperar contraseña no canjea el token |
-| Aplicar la migración `20260810020000_portal_agentes_app_infra.sql` | repo `sozu-supabase-migrations` | push y version gate degradan a vacío (no rompen, pero no funcionan) |
+| Dominio `agentes.sozu.com` apuntado al site, y su Redirect URL `https://agentes.sozu.com/auth/confirmacion-email` | Firebase Hosting + Supabase Auth → URL Configuration | el enlace de recuperar contraseña no canjea el token |
 
 **Limitación conocida del acceso:** el "olvidé mi contraseña" self-service exige
 `roles.requiere_confirmacion_email = true`, y el rol 9 (Agente Interno) lo tiene

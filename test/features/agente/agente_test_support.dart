@@ -54,7 +54,7 @@ ProviderContainer makeClientContainer({List<Override> overrides = const []}) {
 /// Overrides minimos para montar un WIDGET de `client` sin backend: el id de
 /// sesion sale de [testUserIdProvider] y la impersonacion corre sobre un stub.
 ///
-/// Sin esto, `propertiesPortProvider` (y sus hermanos) construyen el
+/// Sin esto, `notificacionesPortProvider` (y sus hermanos) construyen el
 /// `AuthController` real, que toca `Supabase.instance` y revienta el test.
 List<Override> clientWidgetOverrides({List<Override> overrides = const []}) {
   final authPort = _StubAuthPort();

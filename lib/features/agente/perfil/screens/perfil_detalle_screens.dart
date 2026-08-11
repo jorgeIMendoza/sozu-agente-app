@@ -2,719 +2,177 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:sozu_agente_app/core/portal_theme.dart';
-import 'package:sozu_agente_app/data/models.dart';
-import 'package:sozu_agente_app/features/agente/perfil/providers/profile_providers.dart';
-import 'package:sozu_agente_app/widgets/fx.dart';
-import 'package:sozu_agente_app/features/agente/perfil/components/perfil_section_card.dart';
-import 'package:sozu_agente_app/features/agente/perfil/components/perfil_sheets.dart';
-import 'package:sozu_agente_app/widgets/portal_widgets.dart';
+import 'package:sozu_agente_app/core/format.dart';
+import 'package:sozu_agente_app/core/open_media.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/cuenta_de_dispersion_tarjeta.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_aviso.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_bloque_datos.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_cuenta_bancaria.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_identidad.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvista.dart';
+import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
+import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
+import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
+import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/api_error.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// Detalle de información personal: identificación y contacto.
+/// Anuncia el resultado de una operación del perfil.
+void _aviso(BuildContext context, String mensaje, {bool error = false}) {
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(mensaje),
+      duration: Duration(seconds: error ? 7 : 3),
+    ),
+  );
+}
+
+// ─── Identidad ──────────────────────────────────────────────────────────────
+
+/// Identidad del agente: datos personales y domicilio particular.
+///
+/// Es la única sección del perfil que el agente captura completa a mano; la
+/// fiscal viene de su Constancia y la de su cuenta la administra SOZU.
 class PerfilPersonalScreen extends ConsumerWidget {
-  /// En modo portal, si se provee, la vista se pinta inline en lugar de un
-  /// diálogo centrado.
-  final VoidCallback? onBack;
-
-  const PerfilPersonalScreen({super.key, this.onBack});
+  const PerfilPersonalScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final perfil = ref.watch(profileProvider);
-    final p = perfil.valueOrNull;
+    final asyncPerfil = ref.watch(perfilAgenteProvider);
+    final permisos = ref.watch(permisosVistaProvider(VistaAgente.perfil));
 
-    final filas = <Widget>[
-      PerfilInfoRow(label: 'Tipo de persona', value: p?.tipoPersonaLabel),
-      PerfilInfoRow(
-        label: (p?.esMoral ?? false) ? 'Razón social' : 'Nombre completo',
-        value: p?.nombreLegal,
-      ),
-      PerfilInfoRow(label: 'RFC con homoclave', value: p?.rfc, mono: true),
-      // Una persona moral no tiene CURP: la fila salía siempre "Sin dato".
-      if (!(p?.esMoral ?? false))
-        PerfilInfoRow(label: 'CURP', value: p?.curp, mono: true),
-      PerfilInfoRow(
-        label: 'Teléfono',
-        value: p?.telefono != null
-            ? '${p?.clavePaisTelefono ?? '+52'} ${p?.telefono}'
-            : null,
-      ),
-      PerfilInfoRow(label: 'Ocupación', value: p?.ocupacion),
-      PerfilInfoRow(
-        label: 'Correo electrónico',
-        value: p?.email,
-        note: 'No editable',
-        isLast: true,
-      ),
-    ];
-
-    if (isPortalMode(context)) {
-      final actions = [
-        if (p != null)
-          SButton.secondary(
-            label: 'Editar',
-            onPressed: () => showEditPersonalSheet(context, p),
-            size: SButtonSize.sm,
-            fullWidth: false,
-          ),
-      ];
-      // El portal no muestra la nota "Tus datos serán validados…" en esta vista.
-      final child = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (perfil.isLoading)
-            const _DetalleSkeleton()
-          else if (perfil.hasError)
-            SErrorState(
-              title: 'No pudimos cargar tu información',
-              onRetry: () => ref.invalidate(profileProvider),
-            )
-          else
-            ...filas,
-        ],
-      );
-      if (onBack != null) {
-        return _PerfilDetalleInline(
-          title: 'Información personal',
-          subtitle: 'Identificación y datos de contacto',
-          actions: actions,
-          onBack: onBack!,
-          child: child,
-        );
-      }
-      return PortalDialogShell(
-        title: 'Información personal',
-        subtitle: 'Identificación y datos de contacto',
-        actions: actions,
-        child: child,
-      );
-    }
-    final tone = context.s.color;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Información personal')),
-      body: ContentFrame(
-        maxWidth: 720,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            SCard(
-              child: perfil.isLoading
-                  ? const _DetalleSkeleton()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _DetalleHeader(
-                          title: 'Información personal',
-                          subtitle: 'Identificación y datos de contacto',
-                          onEdit: (p != null)
-                              ? () => showEditPersonalSheet(context, p)
-                              : null,
-                        ),
-                        const SizedBox(height: 8),
-                        PerfilInfoRow(
-                          label: 'Tipo de persona',
-                          value: p?.tipoPersonaLabel,
-                        ),
-                        PerfilInfoRow(
-                          label: (p?.esMoral ?? false)
-                              ? 'Razón social'
-                              : 'Nombre completo',
-                          value: p?.nombreLegal,
-                        ),
-                        PerfilInfoRow(
-                          label: 'RFC con homoclave',
-                          value: p?.rfc,
-                          mono: true,
-                        ),
-                        // Una persona moral no tiene CURP.
-                        if (!(p?.esMoral ?? false))
-                          PerfilInfoRow(
-                            label: 'CURP',
-                            value: p?.curp,
-                            mono: true,
-                          ),
-                        PerfilInfoRow(
-                          label: 'Teléfono',
-                          value: p?.telefono != null
-                              ? '${p?.clavePaisTelefono ?? '+52'} ${p?.telefono}'
-                              : null,
-                        ),
-                        PerfilInfoRow(label: 'Ocupación', value: p?.ocupacion),
-                        PerfilInfoRow(
-                          label: 'Correo electrónico',
-                          value: p?.email,
-                          note: 'No editable',
-                          isLast: true,
-                        ),
-                      ],
-                    ),
-            ),
-            if (perfil.hasError)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: SErrorState(
-                  title: 'No pudimos cargar tu información',
-                  onRetry: () => ref.invalidate(profileProvider),
-                ),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              'Tus datos serán validados por el área correspondiente.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: tone.fgSubtle),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Detalle de información fiscal: régimen, CFDI y dirección fiscal.
-class PerfilFiscalScreen extends ConsumerWidget {
-  final VoidCallback? onBack;
-
-  const PerfilFiscalScreen({super.key, this.onBack});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final perfil = ref.watch(profileProvider);
-    final p = perfil.valueOrNull;
-
-    if (isPortalMode(context)) {
-      final actions = [
-        if (p != null)
-          SButton.secondary(
-            label: 'Editar',
-            onPressed: () => showEditFiscalSheet(context, p),
-            size: SButtonSize.sm,
-            fullWidth: false,
-          ),
-      ];
-      final child = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _AmberInfoBanner(
-            text: 'Tus datos serán validados por el área correspondiente.',
-          ),
-          const SizedBox(height: 12),
-          if (perfil.isLoading)
-            const _DetalleSkeleton()
-          else if (perfil.hasError)
-            SErrorState(
-              title: 'No pudimos cargar tu información',
-              onRetry: () => ref.invalidate(profileProvider),
-            )
-          else ...[
-            PerfilInfoRow(label: 'Régimen fiscal', value: p?.regimenDisplay),
-            PerfilInfoRow(label: 'Uso CFDI', value: p?.usoCfdiDisplay),
-            PerfilInfoRow(label: 'Código postal', value: p?.cp, mono: true),
-            PerfilInfoRow(label: 'Calle', value: p?.calle),
-            PerfilInfoRow(label: 'Núm. exterior', value: p?.numExt),
-            PerfilInfoRow(label: 'Núm. interior', value: p?.numInt),
-            PerfilInfoRow(label: 'Colonia', value: p?.colonia, isLast: true),
-          ],
-        ],
-      );
-      if (onBack != null) {
-        return _PerfilDetalleInline(
-          title: 'Información fiscal',
-          subtitle: 'Régimen, CFDI y dirección fiscal',
-          actions: actions,
-          onBack: onBack!,
-          child: child,
-        );
-      }
-      return PortalDialogShell(
-        title: 'Información fiscal',
-        subtitle: 'Régimen, CFDI y dirección fiscal',
-        actions: actions,
-        child: child,
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Información fiscal')),
-      body: ContentFrame(
-        maxWidth: 720,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            const _AmberInfoBanner(
-              text: 'Tus datos serán validados por el área correspondiente.',
-            ),
-            const SizedBox(height: 12),
-            SCard(
-              child: perfil.isLoading
-                  ? const _DetalleSkeleton()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _DetalleHeader(
-                          title: 'Información fiscal',
-                          subtitle: 'Régimen, CFDI y dirección fiscal',
-                          onEdit: (p != null)
-                              ? () => showEditFiscalSheet(context, p)
-                              : null,
-                        ),
-                        const SizedBox(height: 8),
-                        PerfilInfoRow(
-                          label: 'Régimen fiscal',
-                          value: p?.regimenDisplay,
-                        ),
-                        PerfilInfoRow(
-                          label: 'Uso CFDI',
-                          value: p?.usoCfdiDisplay,
-                        ),
-                        PerfilInfoRow(
-                          label: 'Código postal',
-                          value: p?.cp,
-                          mono: true,
-                        ),
-                        PerfilInfoRow(label: 'Calle', value: p?.calle),
-                        PerfilInfoRow(label: 'Núm. exterior', value: p?.numExt),
-                        PerfilInfoRow(label: 'Núm. interior', value: p?.numInt),
-                        PerfilInfoRow(
-                          label: 'Colonia',
-                          value: p?.colonia,
-                          isLast: true,
-                        ),
-                      ],
-                    ),
-            ),
-            if (perfil.hasError)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: SErrorState(
-                  title: 'No pudimos cargar tu información',
-                  onRetry: () => ref.invalidate(profileProvider),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Detalle de cuentas bancarias de dispersión.
-class PerfilCuentasScreen extends ConsumerWidget {
-  final VoidCallback? onBack;
-
-  const PerfilCuentasScreen({super.key, this.onBack});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tone = context.s.color;
-    final perfil = ref.watch(profileProvider);
-    final cuentas = perfil.valueOrNull?.cuentasBancarias ?? [];
-
-    // Solo lectura: el alta se hace en Documentos → Cuenta bancaria, así que
-    // aquí no hay botón de "agregar".
-    List<Widget> cuerpo() => [
-      if (perfil.isLoading)
-        const _DetalleSkeleton()
-      else if (perfil.hasError)
-        SErrorState(
-          title: 'No pudimos cargar tus cuentas',
-          onRetry: () => ref.invalidate(profileProvider),
-        )
-      else if (cuentas.isEmpty)
-        const _CuentasEmptyBox()
-      else
-        for (final c in cuentas) ...[
-          _CuentaCard(cuenta: c),
-          const SizedBox(height: 10),
-        ],
-      const SizedBox(height: 4),
-      const _CuentasFooterLink(),
-    ];
-
-    if (isPortalMode(context)) {
-      final child = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _BlueInfoBanner(
-            text:
-                'Por tu seguridad, toda alta o cambio de cuenta se notifica de inmediato.',
-          ),
-          const SizedBox(height: 12),
-          ...cuerpo(),
-        ],
-      );
-      if (onBack != null) {
-        return _PerfilDetalleInline(
-          title: 'Cuentas bancarias',
-          subtitle: 'SOZU deposita directamente a estas cuentas.',
-          actions: const [],
-          onBack: onBack!,
-          child: child,
-        );
-      }
-      return PortalDialogShell(
-        title: 'Cuentas bancarias',
-        subtitle: 'SOZU deposita directamente a estas cuentas.',
-        child: child,
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cuentas bancarias')),
-      body: ContentFrame(
-        maxWidth: 720,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-              decoration: BoxDecoration(
-                color: tone.primarySoft,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: SozuBrand.green500.withValues(alpha: 0.25),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.shield_outlined,
-                    size: 15,
-                    color: tone.primaryHover,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Por tu seguridad, toda alta o cambio de cuenta se notifica de inmediato.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: tone.primaryHover,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...cuerpo(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Shell inline del portal ("← Volver al Perfil" + card a 920px) ───────────
-
-/// Detalle inline del Perfil en modo portal: botón "← Volver al Perfil" + card
-/// ancho con header (título/subtítulo + acciones) y cuerpo.
-class _PerfilDetalleInline extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final List<Widget> actions;
-  final VoidCallback onBack;
-  final Widget child;
-
-  const _PerfilDetalleInline({
-    required this.title,
-    required this.onBack,
-    required this.child,
-    this.subtitle,
-    this.actions = const [],
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
+    return PerfilSubvista(
+      titulo: 'Identidad',
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: onBack,
-            style: TextButton.styleFrom(
-              foregroundColor: PortalColors.mutedForeground,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            icon: const Icon(Icons.arrow_back, size: 15),
-            label: const Text('Volver al Perfil'),
+        asyncPerfil.when(
+          loading: () => const PerfilSubvistaCargando(),
+          error: (e, _) => SErrorState(
+            title: tituloDeErrorDeCarga(e),
+            message: mensajeDeErrorDeCarga(e),
+            onRetry: () => ref.invalidate(perfilAgenteProvider),
           ),
-        ),
-        const SizedBox(height: 8),
-        SCard(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: portalText(size: 18, weight: FontWeight.w700),
-                        ),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle!,
-                            style: portalText(
-                              size: 13.5,
-                              color: PortalColors.mutedForeground,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  ...actions,
-                ],
-              ),
-              const SizedBox(height: 18),
-              child,
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
+          data: (perfil) {
+            final i = perfil.identidad;
+            final puedeEditar = permisos.actualizar && perfil.puedeEditar;
+            final paso = perfil.activacion.paso('basic');
 
-// ─── Piezas internas ─────────────────────────────────────────────────────────
+            Future<void> editar() async {
+              final guardo = await mostrarHojaDeIdentidad(
+                context,
+                identidad: i,
+              );
+              if (guardo != true) return;
+              ref.invalidate(perfilAgenteProvider);
+              // El nombre del agente vive también en el encabezado del portal.
+              ref.invalidate(sesionProvider);
+              if (context.mounted) _aviso(context, 'Información actualizada');
+            }
 
-class _DetalleHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final VoidCallback? onEdit;
-
-  const _DetalleHeader({
-    required this.title,
-    required this.subtitle,
-    this.onEdit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = context.s.color;
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: tone.fg,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 13, color: tone.fgMuted),
-              ),
-            ],
-          ),
-        ),
-        if (onEdit != null)
-          OutlinedButton(
-            onPressed: onEdit,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: tone.fg,
-              side: BorderSide(color: tone.border),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              minimumSize: Size.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            child: const Text('Editar'),
-          ),
-      ],
-    );
-  }
-}
-
-class _AmberInfoBanner extends StatelessWidget {
-  final String text;
-  const _AmberInfoBanner({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = context.s.color;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-      decoration: BoxDecoration(
-        color: tone.warningSoft,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SozuAmber.base.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 15, color: SozuAmber.strong),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 12.5, color: SozuAmber.strong),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Banner informativo azul del aviso de seguridad de cuentas.
-class _BlueInfoBanner extends StatelessWidget {
-  final String text;
-  const _BlueInfoBanner({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    const fg = Color(0xFF2C5D8A);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEF4FB),
-        borderRadius: BorderRadius.circular(kPortalRadiusSm),
-        border: Border.all(color: const Color(0xFFCFE0F3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.shield_outlined, size: 14, color: fg),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: portalText(size: 12.5, weight: FontWeight.w500, color: fg),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Cuenta bancaria de solo lectura: banco, número enmascarado, titular y
-/// estatus.
-class _CuentaCard extends StatelessWidget {
-  final CuentaBancariaPerfil cuenta;
-
-  const _CuentaCard({required this.cuenta});
-
-  /// Sin carátula no puede ir a revisión → "Incompleto"; 2 validada, 3
-  /// rechazada, el resto en revisión.
-  (String, SBadgeTone) get _badge {
-    if (cuenta.evidencia == null) return ('Incompleto', SBadgeTone.negative);
-    if (cuenta.estatus == 2) return ('Validada', SBadgeTone.positive);
-    if (cuenta.estatus == 3) return ('Rechazada', SBadgeTone.negative);
-    return ('En revisión', SBadgeTone.pending);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = context.s.color;
-    final (label, badgeTone) = _badge;
-    return SCard(
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: tone.primarySoft,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.credit_card_outlined,
-              size: 19,
-              color: tone.primaryHover,
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  cuenta.banco,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: tone.fg,
-                  ),
-                ),
-                if (cuenta.cuentaMasked != null)
-                  Text(
-                    cuenta.cuentaMasked!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'monospace',
-                      color: tone.fgMuted,
+                // Qué le falta exactamente para cerrar el paso. Sin esto el
+                // agente ve "En proceso" y no sabe qué campo abrir.
+                if (paso != null && paso.faltantes.isNotEmpty) ...[
+                  _Faltantes(faltantes: paso.faltantes),
+                  SizedBox(height: context.s.space.md),
+                ],
+                PerfilBloqueDatos(
+                  titulo: 'Información personal',
+                  accion: puedeEditar
+                      ? SButton(
+                          label: 'Editar',
+                          icon: Icons.edit_outlined,
+                          onPressed: editar,
+                          variant: SButtonVariant.ghost,
+                          size: SButtonSize.sm,
+                          fullWidth: false,
+                        )
+                      : null,
+                  filas: [
+                    PerfilDato(
+                      etiqueta: 'Correo · solo lectura',
+                      valor: i.email,
                     ),
-                  ),
-                if (cuenta.titular != null)
-                  Text(
-                    'Titular: ${cuenta.titular!}',
-                    style: TextStyle(fontSize: 12, color: tone.fgSubtle),
-                  ),
+                    PerfilDato(etiqueta: 'Teléfono', valor: i.telefono),
+                    PerfilDato(
+                      etiqueta: 'Nombre completo',
+                      valor: i.nombreLegal,
+                    ),
+                    PerfilDato(etiqueta: 'CURP', valor: i.curp),
+                    PerfilDato(
+                      etiqueta: 'Fecha de nacimiento',
+                      valor: i.fechaNacimiento == null
+                          ? null
+                          : formatDate(i.fechaNacimiento),
+                    ),
+                    PerfilDato(etiqueta: 'Sexo', valor: i.sexoLegible),
+                    PerfilDato(
+                      etiqueta: 'Domicilio particular',
+                      valor: i.domicilio.resumen,
+                      ultima: true,
+                    ),
+                  ],
+                ),
               ],
-            ),
-          ),
-          SBadge(label: label, tone: badgeTone),
-        ],
-      ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
-/// Estado vacío de cuentas, con la guía hacia Documentos → Cuenta bancaria.
-class _CuentasEmptyBox extends StatelessWidget {
-  const _CuentasEmptyBox();
+/// Lista de lo que le falta al agente para cerrar un paso de su activación.
+class _Faltantes extends StatelessWidget {
+  final List<String> faltantes;
+
+  const _Faltantes({required this.faltantes});
 
   @override
   Widget build(BuildContext context) {
-    final tone = context.s.color;
+    final t = context.s;
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+      padding: EdgeInsets.all(t.space.sm),
       decoration: BoxDecoration(
-        color: tone.surfaceAlt.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: tone.border),
+        color: t.color.warningSoft,
+        border: Border.all(color: t.color.warning),
+        borderRadius: t.radius.mdBorder,
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Sin cuentas registradas.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: tone.fg,
-            ),
+          Row(
+            children: [
+              Icon(
+                Icons.pending_actions_outlined,
+                size: 17,
+                color: t.color.warningFg,
+              ),
+              SizedBox(width: t.space.xs),
+              Text(
+                'Te falta capturar',
+                style: t.text.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: t.color.warningFg,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Regístrala en Documentos → Cuenta bancaria.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: tone.fgSubtle),
+          SizedBox(height: t.space.xs),
+          Wrap(
+            spacing: t.space.xs,
+            runSpacing: t.space.xs,
+            children: [
+              for (final f in faltantes)
+                SBadge(
+                  label: f,
+                  tone: SBadgeTone.pending,
+                  size: SBadgeSize.sm,
+                ),
+            ],
           ),
         ],
       ),
@@ -722,54 +180,367 @@ class _CuentasEmptyBox extends StatelessWidget {
   }
 }
 
-/// Pie de cuentas, siempre visible: enlace "Documentos → Cuenta bancaria" que
-/// lleva al Expediente.
-class _CuentasFooterLink extends StatelessWidget {
-  const _CuentasFooterLink();
+// ─── Información fiscal ─────────────────────────────────────────────────────
+
+/// Información fiscal del agente.
+///
+/// ⚠️ El único campo editable es el **uso del CFDI**. El RFC, el régimen y el
+/// domicilio fiscal NO tienen acción de escritura en el backend: solo se
+/// escriben al entregar la Constancia de Situación Fiscal, con los datos que el
+/// agente confirma de ese documento (ver [PerfilAgentePort]). Por eso esta
+/// pantalla no ofrece un formulario fiscal: manda a Documentos, que es el camino
+/// que sí existe.
+class PerfilFiscalScreen extends ConsumerStatefulWidget {
+  const PerfilFiscalScreen({super.key});
+
+  @override
+  ConsumerState<PerfilFiscalScreen> createState() => _PerfilFiscalScreenState();
+}
+
+class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
+  bool _guardandoCfdi = false;
+
+  Future<void> _guardarUsoCfdi(String? codigo) async {
+    setState(() => _guardandoCfdi = true);
+    try {
+      await ref.read(perfilAgentePortProvider).guardarUsoCfdi(codigo);
+      ref.invalidate(perfilAgenteProvider);
+      if (mounted) _aviso(context, 'Uso del CFDI actualizado');
+    } on ApiError catch (e) {
+      if (mounted) _aviso(context, mensajeDeError(e), error: true);
+    } catch (_) {
+      if (mounted) {
+        _aviso(context, 'No se pudo guardar el uso del CFDI.', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _guardandoCfdi = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final tone = context.s.color;
-    final muted = TextStyle(fontSize: 12, color: tone.fgSubtle);
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    final t = context.s;
+    final asyncPerfil = ref.watch(perfilAgenteProvider);
+    final permisos = ref.watch(permisosVistaProvider(VistaAgente.perfil));
+    // Se resuelve ANTES de que llegue el perfil: los campos del agente
+    // dependiente salen en solo lectura con su nota desde el primer frame.
+    final nota = ref.watch(notaSoloLecturaProvider(CampoRestringido.fiscal));
+    final identidad = ref.watch(identidadAgenteProvider);
+
+    return PerfilSubvista(
+      titulo: 'Información fiscal',
       children: [
-        Text('Para registrar una cuenta, ve a ', style: muted),
-        InkWell(
-          onTap: () => context.push('/perfil/expediente'),
-          child: Text(
-            'Documentos → Cuenta bancaria',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: tone.primaryHover,
-            ),
+        if (nota != null) ...[
+          PerfilAvisoSoloLectura.una(
+            nota: nota,
+            inmobiliaria: identidad?.inmobiliariaNombre,
           ),
+          SizedBox(height: t.space.md),
+        ],
+        asyncPerfil.when(
+          loading: () => const PerfilSubvistaCargando(),
+          error: (e, _) => SErrorState(
+            title: tituloDeErrorDeCarga(e),
+            message: mensajeDeErrorDeCarga(e),
+            onRetry: () => ref.invalidate(perfilAgenteProvider),
+          ),
+          data: (perfil) {
+            final f = perfil.fiscal;
+            final soloLectura = nota != null || f.soloLectura;
+            final puedeEditarCfdi =
+                permisos.actualizar && !soloLectura && perfil.puedeEditar;
+            final constancia = perfil.expediente.documento('csf');
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PerfilBloqueDatos(
+                  titulo: 'Uso del CFDI',
+                  filas: const [],
+                  encabezado: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SSelectField<String>(
+                        hint: 'Selecciona…',
+                        value: f.usoCfdi,
+                        opciones: [
+                          for (final u in perfil.catalogos.usosCfdi)
+                            (value: u.valor, label: u.etiqueta),
+                        ],
+                        onChanged: puedeEditarCfdi && !_guardandoCfdi
+                            ? _guardarUsoCfdi
+                            : null,
+                      ),
+                      if (_guardandoCfdi) ...[
+                        SizedBox(height: t.space.xs),
+                        Text(
+                          'Guardando…',
+                          style: t.text.overline.copyWith(
+                            color: t.color.fgSubtle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  pie: soloLectura
+                      ? 'Tu inmobiliaria emite los CFDI de comisiones a SOZU '
+                            'con estos datos fiscales.'
+                      : 'Como emites CFDI de comisiones a SOZU, tu RFC, '
+                            'régimen y CP fiscal deben coincidir con el SAT '
+                            '(CFDI 4.0).',
+                ),
+                SizedBox(height: t.space.md),
+                PerfilBloqueDatos(
+                  titulo: 'Información fiscal',
+                  filas: [
+                    PerfilDato(
+                      etiqueta: 'Razón social / Nombre',
+                      valor: f.nombreLegal,
+                    ),
+                    PerfilDato(etiqueta: 'RFC', valor: f.rfc),
+                    PerfilDato(
+                      etiqueta: 'Régimen fiscal',
+                      valor: f.regimenLegible,
+                    ),
+                    PerfilDato(
+                      etiqueta: 'Uso del CFDI',
+                      valor: f.usoCfdiLegible,
+                    ),
+                    PerfilDato(
+                      etiqueta: 'Calle y número',
+                      valor: [
+                        f.domicilio.calle,
+                        f.domicilio.numExt,
+                      ].where((v) => (v ?? '').isNotEmpty).join(' '),
+                    ),
+                    PerfilDato(etiqueta: 'Colonia', valor: f.domicilio.colonia),
+                    PerfilDato(
+                      etiqueta: 'Código postal',
+                      valor: f.domicilio.codigoPostal,
+                      ultima: true,
+                    ),
+                  ],
+                ),
+                SizedBox(height: t.space.md),
+                // El único camino para escribir estos datos.
+                if (!soloLectura)
+                  SCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 18,
+                              color: t.color.primary,
+                            ),
+                            SizedBox(width: t.space.xs),
+                            Expanded(
+                              child: Text(
+                                'Tus datos fiscales salen de tu Constancia',
+                                style: t.text.bodySmall.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: t.color.fg,
+                                ),
+                              ),
+                            ),
+                            if (constancia != null)
+                              SBadge(
+                                label: constancia.estado.etiqueta,
+                                tone: constancia.estado ==
+                                        EstadoDocumento.validado
+                                    ? SBadgeTone.positive
+                                    : SBadgeTone.pending,
+                                size: SBadgeSize.sm,
+                              ),
+                          ],
+                        ),
+                        SizedBox(height: t.space.xs),
+                        Text(
+                          'El RFC, el régimen y tu domicilio fiscal se '
+                          'registran al entregar tu Constancia de Situación '
+                          'Fiscal, con los datos que confirmas de ese '
+                          'documento. Así lo que facturas siempre coincide con '
+                          'lo que tiene el SAT.',
+                          style: t.text.caption.copyWith(
+                            color: t.color.fgMuted,
+                            height: 1.5,
+                          ),
+                        ),
+                        SizedBox(height: t.space.sm),
+                        SButton(
+                          label: constancia?.tieneArchivo == true
+                              ? 'Actualizar mi Constancia'
+                              : 'Entregar mi Constancia',
+                          icon: Icons.upload_outlined,
+                          onPressed: () => context.push('/perfil/expediente'),
+                          variant: SButtonVariant.secondary,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
-        Text('.', style: muted),
       ],
     );
   }
 }
 
-class _DetalleSkeleton extends StatelessWidget {
-  const _DetalleSkeleton();
+// ─── Cuentas de dispersión ──────────────────────────────────────────────────
+
+/// Cuentas a las que SOZU le dispersa las comisiones al agente.
+class PerfilCuentasScreen extends ConsumerWidget {
+  const PerfilCuentasScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.s;
+    final asyncPerfil = ref.watch(perfilAgenteProvider);
+    final permisos = ref.watch(permisosVistaProvider(VistaAgente.perfil));
+    final nota = ref.watch(notaSoloLecturaProvider(CampoRestringido.banco));
+    final identidad = ref.watch(identidadAgenteProvider);
+    final perfil = asyncPerfil.valueOrNull;
+
+    final puedeEditar = nota == null &&
+        permisos.actualizar &&
+        (perfil?.puedeEditar ?? false);
+
+    Future<void> alta() async {
+      final guardo = await mostrarHojaDeCuentaBancaria(
+        context,
+        bancos: perfil?.catalogos.bancos ?? const [],
+        nombreDelAgente: perfil?.identidad.nombreLegal,
+      );
+      if (guardo != true) return;
+      ref.invalidate(perfilAgenteProvider);
+      if (context.mounted) {
+        _aviso(
+          context,
+          'Cuenta registrada. Queda pendiente de activación hasta que la '
+          'validemos.',
+        );
+      }
+    }
+
+    Future<void> editar(CuentaDeDispersion cuenta) async {
+      final guardo = await mostrarHojaDeCuentaBancaria(
+        context,
+        bancos: perfil?.catalogos.bancos ?? const [],
+        cuenta: cuenta,
+        nombreDelAgente: perfil?.identidad.nombreLegal,
+      );
+      if (guardo != true) return;
+      ref.invalidate(perfilAgenteProvider);
+      if (context.mounted) _aviso(context, 'Cuenta bancaria actualizada.');
+    }
+
+    Future<void> borrar(CuentaDeDispersion cuenta) async {
+      final ok = await showSConfirm(
+        context,
+        titulo: '¿Eliminar esta cuenta?',
+        mensaje:
+            'Dejaremos de considerar ${cuenta.banco} '
+            '${cuenta.numeroEnmascarado} para dispersarte.',
+        puntos: const [
+          'Podrás registrar otra cuando quieras.',
+          'Si es la única, no podremos pagarte hasta que registres otra.',
+        ],
+        etiquetaAceptar: 'Eliminar cuenta',
+        tono: SConfirmTone.warning,
+      );
+      if (ok != true) return;
+      try {
+        await ref.read(perfilAgentePortProvider).borrarCuentaBancaria(cuenta.id);
+        ref.invalidate(perfilAgenteProvider);
+        if (context.mounted) _aviso(context, 'Cuenta bancaria eliminada.');
+      } on ApiError catch (e) {
+        if (context.mounted) _aviso(context, mensajeDeError(e), error: true);
+      } catch (_) {
+        if (context.mounted) {
+          _aviso(context, 'No se pudo eliminar la cuenta.', error: true);
+        }
+      }
+    }
+
+    return PerfilSubvista(
+      titulo: 'Cuenta bancaria',
+      accion: puedeEditar
+          ? SButton(
+              label: 'Agregar',
+              icon: Icons.add,
+              onPressed: alta,
+              size: SButtonSize.sm,
+              fullWidth: false,
+            )
+          : null,
       children: [
-        SSkeleton(width: 180, height: 18),
-        SizedBox(height: 16),
-        SSkeleton(height: 14),
-        SizedBox(height: 12),
-        SSkeleton(height: 14),
-        SizedBox(height: 12),
-        SSkeleton(height: 14),
-        SizedBox(height: 12),
-        SSkeleton(width: 200, height: 14),
+        if (nota != null) ...[
+          PerfilAvisoSoloLectura.una(
+            nota: nota,
+            inmobiliaria: identidad?.inmobiliariaNombre,
+          ),
+          SizedBox(height: t.space.md),
+        ],
+        asyncPerfil.when(
+          loading: () => const PerfilSubvistaCargando(),
+          error: (e, _) => SErrorState(
+            title: tituloDeErrorDeCarga(e),
+            message: mensajeDeErrorDeCarga(e),
+            onRetry: () => ref.invalidate(perfilAgenteProvider),
+          ),
+          data: (datos) {
+            if (datos.cuentas.isEmpty) {
+              return SEmptyState.card(
+                icon: Icons.account_balance_outlined,
+                title: nota != null
+                    ? 'Tu inmobiliaria recibe las comisiones y define cómo te '
+                          'paga: aquí no se registran cuentas.'
+                    : 'Aún no tienes cuentas registradas.',
+                message: nota != null
+                    ? null
+                    : 'Registra la cuenta a la que quieres que te dispersemos '
+                          'tus comisiones.',
+                action: puedeEditar
+                    ? SButton(
+                        label: 'Registrar cuenta',
+                        icon: Icons.add,
+                        onPressed: alta,
+                        fullWidth: false,
+                      )
+                    : null,
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final cuenta in datos.cuentas) ...[
+                  CuentaDeDispersionTarjeta(
+                    cuenta: cuenta,
+                    onEditar: cuenta.editable && puedeEditar
+                        ? () => editar(cuenta)
+                        : null,
+                    // Una cuenta ya validada es la que recibe el dinero: solo
+                    // SOZU la da de baja, y el backend lo rechaza igual.
+                    onBorrar: cuenta.editable && puedeEditar && !cuenta.validada
+                        ? () => borrar(cuenta)
+                        : null,
+                    onVerEvidencia: (cuenta.evidenciaUrl ?? '').isEmpty
+                        ? null
+                        : () => openMedia(
+                            context,
+                            cuenta.evidenciaUrl,
+                            titulo: 'Carátula · ${cuenta.banco}',
+                          ),
+                  ),
+                  SizedBox(height: t.space.sm),
+                ],
+              ],
+            );
+          },
+        ),
       ],
     );
   }
