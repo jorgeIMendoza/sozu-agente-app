@@ -8,17 +8,27 @@ import 'package:sozu_agente_app/ui/ui.dart';
 /// deshabilitado sin explicación al lado se reporta como bug, y el agente no
 /// tiene forma de adivinar a quién pedirle el cambio.
 class PerfilAvisoSoloLectura extends StatelessWidget {
-  /// Por qué no se puede editar ("La administra Grupo X").
-  final String nota;
+  /// Por qué no se puede editar ("La administra Grupo X"). Puede haber varias en
+  /// la misma pantalla —la constancia fiscal y la carta, por ejemplo— y entonces
+  /// van TODAS en este aviso: repetir la caja con el mismo encabezado y solo el
+  /// pie distinto se lee como un error de la app, no como dos motivos.
+  final List<String> notas;
 
   /// Nombre de la inmobiliaria, para decirle a quién acudir.
   final String? inmobiliaria;
 
   const PerfilAvisoSoloLectura({
     super.key,
-    required this.nota,
+    required this.notas,
     this.inmobiliaria,
   });
+
+  /// Atajo para el caso de un solo campo (el de las subvistas de perfil).
+  PerfilAvisoSoloLectura.una({
+    Key? key,
+    required String nota,
+    String? inmobiliaria,
+  }) : this(key: key, notas: [nota], inmobiliaria: inmobiliaria);
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +63,24 @@ class PerfilAvisoSoloLectura extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: t.space.xxs),
-                Text(
-                  '$nota. $aQuien',
-                  style: t.text.overline.copyWith(
-                    color: tone.fgMuted,
-                    height: 1.5,
+                for (final nota in notas)
+                  Text(
+                    notas.length > 1 ? '· $nota.' : '$nota. $aQuien',
+                    style: t.text.overline.copyWith(
+                      color: tone.fgMuted,
+                      height: 1.5,
+                    ),
                   ),
-                ),
+                if (notas.length > 1) ...[
+                  SizedBox(height: t.space.xxs),
+                  Text(
+                    aQuien,
+                    style: t.text.overline.copyWith(
+                      color: tone.fgMuted,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

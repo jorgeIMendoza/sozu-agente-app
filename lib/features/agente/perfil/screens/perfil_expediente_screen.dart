@@ -135,9 +135,9 @@ class _PerfilExpedienteScreenState
                   const _AvisoIdentidad(),
                   SizedBox(height: t.space.md),
                 ],
-                for (final nota in notasSoloLectura) ...[
+                if (notasSoloLectura.isNotEmpty) ...[
                   PerfilAvisoSoloLectura(
-                    nota: nota,
+                    notas: notasSoloLectura.toList(),
                     inmobiliaria: identidad?.inmobiliariaNombre,
                   ),
                   SizedBox(height: t.space.md),

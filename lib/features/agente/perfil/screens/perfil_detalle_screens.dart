@@ -231,7 +231,7 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
       titulo: 'Información fiscal',
       children: [
         if (nota != null) ...[
-          PerfilAvisoSoloLectura(
+          PerfilAvisoSoloLectura.una(
             nota: nota,
             inmobiliaria: identidad?.inmobiliariaNombre,
           ),
@@ -478,7 +478,7 @@ class PerfilCuentasScreen extends ConsumerWidget {
           : null,
       children: [
         if (nota != null) ...[
-          PerfilAvisoSoloLectura(
+          PerfilAvisoSoloLectura.una(
             nota: nota,
             inmobiliaria: identidad?.inmobiliariaNombre,
           ),
