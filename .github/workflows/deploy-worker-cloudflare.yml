@@ -1,0 +1,53 @@
+name: Deploy Worker de descarga (Cloudflare)
+
+# El worker `obtener-agentes-app.sozu.com` es el destino del QR del login y el
+# respaldo del aviso de actualización. Se despliega desde el repo y no pegándolo
+# en el dashboard: así el archivo en git ES lo que está corriendo, y un cambio de
+# package o de id de App Store queda en el historial.
+#
+# Solo corre cuando cambia el worker o su config — un deploy web no tiene por qué
+# tocar el redirector.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tool/cloudflare-worker-obtener-agentes-app.js'
+      - 'tool/cloudflare/wrangler.toml'
+      - '.github/workflows/deploy-worker-cloudflare.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Secret requerido: CLOUDFLARE_API_TOKEN, creado en Cloudflare con la
+      # plantilla "Edit Cloudflare Workers" y acotado a la zona sozu.com. El
+      # account_id no va aquí: vive en wrangler.toml porque no es un secreto.
+      - name: Desplegar worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy --config tool/cloudflare/wrangler.toml
+
+      # Comprueba que el redirector siga redirigiendo. Un 200 en vez de un 302
+      # significa que algo se rompió: el QR abriría una página en blanco.
+      - name: Verificar que redirige
+        run: |
+          set -e
+          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H 'User-Agent: Mozilla/5.0 (Linux; Android 14) Mobile' \
+            'https://obtener-agentes-app.sozu.com')
+          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' \
+            -H 'User-Agent: Mozilla/5.0 (Linux; Android 14) Mobile' \
+            'https://obtener-agentes-app.sozu.com')
+          echo "Android -> $CODIGO $DESTINO"
+          case "$CODIGO" in
+            30*) ;;
+            *) echo "ERROR: se esperaba una redirección y llegó $CODIGO"; exit 1 ;;
+          esac
+          case "$DESTINO" in
+            *play.google.com*com.sozu.agentes_app*) echo "OK: manda a la app de agentes en Play." ;;
+            *) echo "ERROR: destino inesperado ($DESTINO). ¿El package cambió?"; exit 1 ;;
+          esac
