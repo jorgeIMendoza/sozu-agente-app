@@ -22,23 +22,38 @@ typedef AnonFunctionResponse = ({int status, Map<String, dynamic> body});
 ///     anti-enumeracion de correos) cuando NO reciben `Authorization`: con ese
 ///     header intentan resolver un usuario autenticado y rechazan la peticion.
 ///
+/// [conAuthorization] agrega `Authorization: Bearer <llave anonima>`, y es
+/// OBLIGATORIO para las funciones que conservan `verify_jwt = true`. Verificado
+/// contra produccion (Supabase Cloud): con la llave solo en `apikey`, el gateway
+/// responde `401 UNAUTHORIZED_NO_AUTH_HEADER` antes de ejecutar la funcion. Las
+/// unicas que pasan sin `Authorization` son las que tienen el verify_jwt
+/// apagado (reset-user-password y compania), y esas ADEMAS lo necesitan
+/// ausente para entrar en su modo publico. El gateway self-hosted de desarrollo
+/// es mas permisivo y acepta las dos formas: por eso la diferencia solo se ve
+/// en produccion.
+///
 /// Nunca lanza por status != 2xx: devuelve status + cuerpo para que decida el
 /// llamador (el adaptador traduce a `AuthError`/`ApiError` segun su contrato).
 /// Si no hay red, propaga la excepcion de [http.post].
 Future<AnonFunctionResponse> invokeAnonFunction(
   String fn, {
   Map<String, dynamic> body = const {},
+  bool conAuthorization = false,
 }) async {
   final baseUrl = (dotenv.env['SUPABASE_URL'] ?? '').replaceAll(
     RegExp(r'/+$'),
     '',
   );
+  final llave = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
   final res = await http.post(
     Uri.parse('$baseUrl/functions/v1/$fn'),
     headers: {
       'Content-Type': 'application/json',
-      // SOLO aqui. Repetirla en Authorization rompe el gateway (ver doc arriba).
-      'apikey': dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+      'apikey': llave,
+      // Repetir la llave en Authorization rompe el modo publico de las funciones
+      // de acceso, pero es lo unico que satisface al gateway cuando la funcion
+      // conserva verify_jwt (ver doc arriba): lo decide cada llamador.
+      if (conAuthorization) 'Authorization': 'Bearer $llave',
     },
     body: jsonEncode(body),
   );

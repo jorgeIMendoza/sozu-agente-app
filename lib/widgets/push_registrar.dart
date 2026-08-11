@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sozu_agente_app/core/portal_tracking.dart';
 import 'package:sozu_agente_app/core/push_service.dart';
 import 'package:sozu_agente_app/features/auth/providers/auth_provider.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/home_providers.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 import 'package:sozu_agente_app/router.dart';
 import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 
@@ -40,7 +40,7 @@ class _PushRegistrarState extends ConsumerState<PushRegistrar> {
     if (_handlersListos || !mounted) return;
     _handlersListos = true;
     PushService.onForegroundMessage((_) {
-      ref.invalidate(notificationsProvider);
+      ref.invalidate(notificacionesProvider);
     });
     await PushService.onNotificationTap((_) {
       // push (no go): apila sobre la pantalla actual para que exista
@@ -70,7 +70,7 @@ class _PushRegistrarState extends ConsumerState<PushRegistrar> {
         ),
         callback: (payload) {
           debugPrint('[realtime] notificación nueva: ${payload.newRecord}');
-          if (mounted) ref.invalidate(notificationsProvider);
+          if (mounted) ref.invalidate(notificacionesProvider);
         },
       );
       canal.subscribe((status, error) {
@@ -94,7 +94,7 @@ class _PushRegistrarState extends ConsumerState<PushRegistrar> {
   void _sincronizarPolling({required bool activo}) {
     if (activo && _pollTimer == null) {
       _pollTimer = Timer.periodic(_pollIntervalo, (_) {
-        if (mounted) ref.invalidate(notificationsProvider);
+        if (mounted) ref.invalidate(notificacionesProvider);
       });
     } else if (!activo && _pollTimer != null) {
       _pollTimer!.cancel();

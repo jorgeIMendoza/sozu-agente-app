@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 
-/// Limite de tamano del backend (`MAX_FILE_BYTES` de `cliente-expediente`).
+/// Limite de tamano de archivo que aceptan las edge functions del portal.
 const int kMaxArchivoBytes = 10 * 1024 * 1024;
 
 /// Firma de un PDF: los bytes `%PDF-` al inicio del archivo.

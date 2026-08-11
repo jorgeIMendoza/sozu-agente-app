@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+// El selector de PDF y su validación son genéricos: viven en `core/` porque los
+// comparten la factura de comisión y el expediente, en vez de duplicar la firma
+// `%PDF-` y el tope de 10 MB.
+import 'package:sozu_agente_app/core/archivo_pdf.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/features/agente/comisiones/components/hoja_clientes.dart';
@@ -8,11 +12,6 @@ import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port
 import 'package:sozu_agente_app/features/agente/comisiones/providers/comisiones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
 import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
-// El selector de PDF y su validación son genéricos y ya existen para el
-// expediente. Se reutilizan tal cual en vez de duplicar la firma `%PDF-` y el
-// tope de 10 MB; si aparece un tercer consumidor, el archivo debería subir a
-// `core/`.
-import 'package:sozu_agente_app/features/agente/perfil/expediente/services/archivo_pdf.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Insignia de la etapa de la comisión.

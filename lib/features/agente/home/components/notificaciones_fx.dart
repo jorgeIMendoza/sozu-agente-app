@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/features/agente/home/components/animacion_llegada.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/home_providers.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 
 /// Destino del vuelo en la barra inferior (móvil): el ítem "Notificaciones", o
 /// el botón "Más" (…) cuando ese ítem cae en el overflow.
@@ -98,7 +98,7 @@ class _NotificacionesFxState extends ConsumerState<NotificacionesFx>
     final destino = NotifFx.instance.destinoNav(pantalla, topInset);
     final centro = Offset(pantalla.width / 2, pantalla.height * 0.42);
     _variante = AnimacionCampana.desde(
-      ref.read(notificationsProvider).valueOrNull?.animacionCampana,
+      ref.read(notificacionesProvider).valueOrNull?.animacionCampana,
     );
 
     _quitarProyectil();
@@ -121,7 +121,7 @@ class _NotificacionesFxState extends ConsumerState<NotificacionesFx>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(notificationsProvider, (prev, next) {
+    ref.listen(notificacionesProvider, (prev, next) {
       final nuevo = next.valueOrNull?.noLeidas;
       if (nuevo == null || !mounted) return;
       final actual = _mostradas;
@@ -134,7 +134,7 @@ class _NotificacionesFxState extends ConsumerState<NotificacionesFx>
         _animarLlegada();
       }
     });
-    _mostradas ??= ref.watch(notificationsProvider).valueOrNull?.noLeidas;
+    _mostradas ??= ref.watch(notificacionesProvider).valueOrNull?.noLeidas;
     return widget.child;
   }
 }

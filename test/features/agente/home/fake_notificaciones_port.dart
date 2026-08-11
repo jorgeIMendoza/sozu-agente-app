@@ -1,10 +1,10 @@
 import 'package:sozu_agente_app/data/models.dart';
-import 'package:sozu_agente_app/features/agente/home/ports/home_port.dart';
+import 'package:sozu_agente_app/features/agente/home/ports/notificaciones_port.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
-/// Doble de [HomePort] con datos fijos en memoria: sin red, sin Supabase.
-/// Se inyecta con `homePortProvider.overrideWithValue`.
-class FakeHomePort implements HomePort {
+/// Doble de [NotificacionesPort] con datos fijos en memoria: sin red, sin
+/// Supabase. Se inyecta con `notificacionesPortProvider.overrideWithValue`.
+class FakeNotificacionesPort implements NotificacionesPort {
   /// Fallo forzado de la PROXIMA operacion; se consume al usarse.
   ApiError? nextFailure;
 
@@ -21,38 +21,17 @@ class FakeHomePort implements HomePort {
   }
 
   @override
-  Future<ClienteResumen> summary() async {
-    _throwIfFailing('summary');
-    return ClienteResumen.fromJson({
-      'cliente': {'nombre_legal': 'Alex Hernández', 'iniciales': 'AH'},
-      'resumen': {'patrimonio_total': 100.0},
-    });
-  }
-
-  @override
-  Future<List<MenuItemDto>> menu() async {
-    _throwIfFailing('menu');
-    return [
-      MenuItemDto.fromJson({
-        'id': 1,
-        'label': 'Inicio',
-        'route': '/inicio',
-        'orden': 1,
-      }),
-      MenuItemDto.fromJson({
-        'id': 2,
-        'label': 'Pagos',
-        'route': '/pagos',
-        'orden': 2,
-      }),
-    ];
-  }
-
-  @override
-  Future<ClienteNotificaciones> notifications() async {
+  Future<BandejaDeNotificaciones> notifications() async {
     _throwIfFailing('notifications');
-    return ClienteNotificaciones.fromJson({
-      'notificaciones': [],
+    return BandejaDeNotificaciones.fromJson({
+      'notificaciones': [
+        {
+          'id': 1,
+          'tipo': 'informativa',
+          'titulo': 'Nueva oferta',
+          'descripcion': 'Tu prospecto avanzó de etapa',
+        },
+      ],
       'no_leidas': noLeidas,
     });
   }

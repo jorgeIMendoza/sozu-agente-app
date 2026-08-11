@@ -6,7 +6,7 @@ import 'package:sozu_agente_app/core/portal_theme.dart';
 import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/features/agente/home/components/animacion_llegada.dart';
 import 'package:sozu_agente_app/features/agente/home/components/notificaciones_fx.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/home_providers.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/screens/notificaciones_screen.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/portal_widgets.dart';
@@ -45,7 +45,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell>
       if (!mounted) return;
       setState(() {
         _mostradas =
-            ref.read(notificationsProvider).valueOrNull?.noLeidas ?? _mostradas;
+            ref.read(notificacionesProvider).valueOrNull?.noLeidas ?? _mostradas;
         _pop = true;
         _volando = false;
       });
@@ -77,7 +77,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell>
     if (overlay == null || box == null || !box.attached) {
       setState(() {
         _mostradas =
-            ref.read(notificationsProvider).valueOrNull?.noLeidas ?? _mostradas;
+            ref.read(notificacionesProvider).valueOrNull?.noLeidas ?? _mostradas;
       });
       return;
     }
@@ -85,7 +85,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell>
     final pantalla = MediaQuery.of(context).size;
     final centro = Offset(pantalla.width / 2, pantalla.height * 0.42);
     _variante = AnimacionCampana.desde(
-      ref.read(notificationsProvider).valueOrNull?.animacionCampana,
+      ref.read(notificacionesProvider).valueOrNull?.animacionCampana,
     );
 
     _quitarProyectil();
@@ -170,7 +170,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell>
       visible: TickerMode.valuesOf(context).enabled,
     );
 
-    ref.listen(notificationsProvider, (prev, next) {
+    ref.listen(notificacionesProvider, (prev, next) {
       final nuevo = next.valueOrNull?.noLeidas;
       if (nuevo == null || !mounted) return;
       final actual = _mostradas;
@@ -185,7 +185,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell>
       }
     });
 
-    _mostradas ??= ref.watch(notificationsProvider).valueOrNull?.noLeidas ?? 0;
+    _mostradas ??= ref.watch(notificacionesProvider).valueOrNull?.noLeidas ?? 0;
     final noLeidas = _mostradas ?? 0;
 
     return IconButton(
@@ -234,7 +234,7 @@ class _NotifPreviewPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(notificationsProvider).valueOrNull;
+    final data = ref.watch(notificacionesProvider).valueOrNull;
     final preview = ordenarNotificaciones(
       data?.notificaciones ?? const [],
     ).take(8).toList();

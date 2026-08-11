@@ -5,11 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/portal_theme.dart';
 import 'package:sozu_agente_app/data/models.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/home_providers.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/portal_widgets.dart';
 
-/// Notificaciones del cliente: lista, marcar leída, marcar todas.
+/// Notificaciones del agente: lista, marcar leída, marcar todas.
 class NotificacionesScreen extends ConsumerStatefulWidget {
   const NotificacionesScreen({super.key});
 
@@ -32,7 +32,7 @@ class _NotificacionesScreenState extends ConsumerState<NotificacionesScreen> {
   Widget build(BuildContext context) {
     final tone = context.s.color;
     final portal = isPortalMode(context);
-    final notif = ref.watch(notificationsProvider);
+    final notif = ref.watch(notificacionesProvider);
     final noLeidas = notif.valueOrNull?.noLeidas ?? 0;
 
     return Scaffold(
@@ -65,9 +65,9 @@ class _NotificacionesScreenState extends ConsumerState<NotificacionesScreen> {
             ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(notificationsProvider);
+          ref.invalidate(notificacionesProvider);
           try {
-            await ref.read(notificationsProvider.future);
+            await ref.read(notificacionesProvider.future);
           } catch (_) {}
         },
         child: notif.when(
@@ -91,7 +91,7 @@ class _NotificacionesScreenState extends ConsumerState<NotificacionesScreen> {
             children: [
               SErrorState(
                 title: 'No pudimos cargar tus notificaciones',
-                onRetry: () => ref.invalidate(notificationsProvider),
+                onRetry: () => ref.invalidate(notificacionesProvider),
               ),
             ],
           ),
@@ -105,7 +105,7 @@ class _NotificacionesScreenState extends ConsumerState<NotificacionesScreen> {
   }
 
   /// Vista móvil / angosta: tabs Todas / Sin leer y filas con botón X.
-  Widget _movilVista(ClienteNotificaciones data) {
+  Widget _movilVista(BandejaDeNotificaciones data) {
     final total = data.notificaciones.length;
     final noLeidas = data.noLeidas;
     final ordenadas = ordenarNotificaciones(data.notificaciones);
@@ -256,7 +256,7 @@ class _NotificacionesScreenState extends ConsumerState<NotificacionesScreen> {
 
   /// Vista modo portal (web >=1024): filas anchas con borde primary si no están
   /// leídas. Solo capa visual: mismas acciones que [_movilVista].
-  Widget _portalVista(ClienteNotificaciones data) {
+  Widget _portalVista(BandejaDeNotificaciones data) {
     final total = data.notificaciones.length;
     final noLeidas = data.noLeidas;
     final ordenadas = ordenarNotificaciones(data.notificaciones);
@@ -831,7 +831,7 @@ Future<void> marcarNotificacion(
   String? action,
   int? id,
 }) async {
-  final port = ref.read(homePortProvider);
+  final port = ref.read(notificacionesPortProvider);
   try {
     switch (action) {
       case 'marcar_leida':
@@ -844,7 +844,7 @@ Future<void> marcarNotificacion(
         break; // sin acción: solo refrescar
     }
   } catch (_) {}
-  ref.invalidate(notificationsProvider);
+  ref.invalidate(notificacionesProvider);
 }
 
 /// Marca una notificación como NO leída (revierte el "leído") y refresca el
@@ -852,9 +852,9 @@ Future<void> marcarNotificacion(
 /// de `useMarkAsUnread` del portal.
 Future<void> marcarNoLeidaNotificacion(WidgetRef ref, int id) async {
   try {
-    await ref.read(homePortProvider).markNotificationUnread(id);
+    await ref.read(notificacionesPortProvider).markNotificationUnread(id);
   } catch (_) {}
-  ref.invalidate(notificationsProvider);
+  ref.invalidate(notificacionesProvider);
 }
 
 /// Alterna el estado leída ↔ no-leída de una notificación: si está leída la

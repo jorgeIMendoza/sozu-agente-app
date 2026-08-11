@@ -1,30 +1,27 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sozu_agente_app/data/models.dart';
-import 'package:sozu_agente_app/features/agente/home/ports/home_port.dart';
+import 'package:sozu_agente_app/features/agente/home/ports/notificaciones_port.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
-/// Implementacion de [HomePort] sobre Supabase (edge functions cliente-resumen,
-/// cliente-menu y cliente-notificaciones).
-class HomeAdapter implements HomePort {
-  /// Cliente que se esta viendo cuando un super admin impersona; null = el propio.
+/// Implementacion de [NotificacionesPort] sobre Supabase (edge function
+/// `agente-notificaciones`).
+class NotificacionesAdapter implements NotificacionesPort {
+  /// Agente que se esta viendo cuando un super admin impersona; null = el propio.
   final int? impersonate;
 
-  const HomeAdapter({this.impersonate});
+  const NotificacionesAdapter({this.impersonate});
 
   /// Getter perezoso a proposito: construir el adaptador no toca el singleton
   /// de Supabase, asi el provider puede crearlo antes de `Supabase.initialize`.
   SupabaseClient get _sb => Supabase.instance.client;
 
-  /// Invoca una edge function con el JWT del usuario (y la cabecera de
+  /// Invoca la edge function con el JWT del usuario (y la cabecera de
   /// impersonacion si aplica) y normaliza cualquier fallo a [ApiError].
-  Future<Map<String, dynamic>> _invoke(
-    String fn, {
-    Map<String, dynamic>? body,
-  }) async {
+  Future<Map<String, dynamic>> _invoke({Map<String, dynamic>? body}) async {
     try {
       final res = await _sb.functions.invoke(
-        fn,
+        'agente-notificaciones',
         body: body ?? {},
         headers: impersonate != null
             ? {'x-impersonate-id-persona': '$impersonate'}
@@ -48,47 +45,26 @@ class HomeAdapter implements HomePort {
   }
 
   @override
-  Future<ClienteResumen> summary() async =>
-      ClienteResumen.fromJson(await _invoke('agente-resumen'));
-
-  @override
-  Future<List<MenuItemDto>> menu() async {
-    final res = await _invoke('agente-menu');
-    return ((res['items'] as List?) ?? [])
-        .map((e) => MenuItemDto.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-  }
-
-  @override
-  Future<ClienteNotificaciones> notifications() async =>
-      ClienteNotificaciones.fromJson(await _invoke('agente-notificaciones'));
+  Future<BandejaDeNotificaciones> notifications() async =>
+      BandejaDeNotificaciones.fromJson(await _invoke());
 
   @override
   Future<void> markNotificationRead(int notificationId) async {
-    await _invoke(
-      'agente-notificaciones',
-      body: {'action': 'marcar_leida', 'id': notificationId},
-    );
+    await _invoke(body: {'action': 'marcar_leida', 'id': notificationId});
   }
 
   @override
   Future<void> markNotificationUnread(int notificationId) async {
-    await _invoke(
-      'agente-notificaciones',
-      body: {'action': 'marcar_no_leida', 'id': notificationId},
-    );
+    await _invoke(body: {'action': 'marcar_no_leida', 'id': notificationId});
   }
 
   @override
   Future<void> markAllNotificationsRead() async {
-    await _invoke('agente-notificaciones', body: {'action': 'marcar_todas'});
+    await _invoke(body: {'action': 'marcar_todas'});
   }
 
   @override
   Future<void> dismissNotification(int notificationId) async {
-    await _invoke(
-      'agente-notificaciones',
-      body: {'action': 'descartar', 'id': notificationId},
-    );
+    await _invoke(body: {'action': 'descartar', 'id': notificationId});
   }
 }

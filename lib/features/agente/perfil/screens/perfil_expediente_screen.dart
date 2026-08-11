@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/carga_de_documento.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/documento_del_expediente_fila.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_aviso.dart';
-import 'package:sozu_agente_app/features/agente/perfil/expediente/layouts/expediente_layout.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvista.dart';
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
@@ -16,26 +15,24 @@ import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_provider
 import 'package:sozu_agente_app/shared/api_error.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// Expediente del agente: los documentos que SOZU le pide, en qué estado está
+/// Expediente del AGENTE: los documentos que SOZU le pide, en qué estado está
 /// cada uno y cómo los entrega.
-class ExpedienteScreen extends ConsumerStatefulWidget {
-  const ExpedienteScreen({super.key});
+///
+/// Se alimenta del bloque `expediente` de `agente-perfil` (un solo endpoint, un
+/// solo provider). No existe un endpoint de expediente aparte: la lectura viene
+/// con el perfil y la escritura es `subirDocumento` del mismo puerto.
+class PerfilExpedienteScreen extends ConsumerStatefulWidget {
+  const PerfilExpedienteScreen({super.key});
 
   @override
-  ConsumerState<ExpedienteScreen> createState() => _ExpedienteScreenState();
+  ConsumerState<PerfilExpedienteScreen> createState() =>
+      _PerfilExpedienteScreenState();
 }
 
-class _ExpedienteScreenState extends ConsumerState<ExpedienteScreen> {
+class _PerfilExpedienteScreenState
+    extends ConsumerState<PerfilExpedienteScreen> {
   /// Clave del documento cuya entrega está en curso.
   String? _enCurso;
-
-  void _volver() {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/perfil');
-    }
-  }
 
   void _aviso(String mensaje, {bool error = false}) {
     if (!mounted) return;
@@ -73,89 +70,257 @@ class _ExpedienteScreenState extends ConsumerState<ExpedienteScreen> {
     final notaConstancia = ref.watch(
       notaSoloLecturaProvider(CampoRestringido.constancia),
     );
+    final notaCarta = ref.watch(
+      notaSoloLecturaProvider(CampoRestringido.carta),
+    );
     final identidad = ref.watch(identidadAgenteProvider);
 
-    return ExpedienteLayout(
+    return PerfilSubvista(
       titulo: 'Mis documentos',
       descripcion:
           'Cada documento que entregas alimenta tu perfil y sube tu porcentaje '
           'de activación. Súbelos completos y legibles: así los validamos a la '
           'primera.',
-      onVolver: _volver,
-      child: asyncPerfil.when(
-        loading: () => Column(
-          children: [
-            const SSkeleton(height: 72),
-            SizedBox(height: t.space.xs),
-            const SSkeleton(height: 72),
-            SizedBox(height: t.space.xs),
-            const SSkeleton(height: 72),
-          ],
-        ),
-        error: (e, _) => SErrorState(
-          title: tituloDeErrorDeCarga(e),
-          message: mensajeDeErrorDeCarga(e),
-          onRetry: () => ref.invalidate(perfilAgenteProvider),
-        ),
-        data: (perfil) {
-          final documentos = perfil.expediente.documentos;
-          if (documentos.isEmpty) {
-            return const SEmptyState.card(
-              icon: Icons.folder_open_outlined,
-              title: 'Todavía no hay documentos configurados en tu expediente.',
-            );
-          }
-
-          final puedeEntregar = permisos.actualizar && perfil.puedeEditar;
-
-          return Column(
+      children: [
+        asyncPerfil.when(
+          loading: () => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Sin identificación vigente no hay expediente que valga: se dice
-              // arriba, antes de la lista.
-              if (perfil.expediente.documento('identidad')?.estado ==
-                  EstadoDocumento.pendiente) ...[
-                _AvisoIdentidad(),
+              const SSkeleton(height: 92),
+              SizedBox(height: t.space.md),
+              const SSkeleton(height: 72),
+              SizedBox(height: t.space.xs),
+              const SSkeleton(height: 72),
+              SizedBox(height: t.space.xs),
+              const SSkeleton(height: 72),
+            ],
+          ),
+          error: (e, _) => SErrorState(
+            title: tituloDeErrorDeCarga(e),
+            message: mensajeDeErrorDeCarga(e),
+            onRetry: () => ref.invalidate(perfilAgenteProvider),
+          ),
+          data: (perfil) {
+            final documentos = perfil.expediente.documentos;
+            if (documentos.isEmpty) {
+              return const SEmptyState.card(
+                icon: Icons.folder_open_outlined,
+                title:
+                    'Todavía no hay documentos configurados en tu expediente.',
+              );
+            }
+
+            final puedeEntregar = permisos.actualizar && perfil.puedeEditar;
+
+            // Notas de solo lectura que el backend manda para el agente
+            // dependiente. Se agrupan y se dicen UNA vez arriba: repetir el
+            // mismo texto en cada fila lo vuelve ruido y el agente deja de
+            // leerlo (cada fila ya trae su propia nota corta).
+            final notasSoloLectura = <String>{
+              if (notaConstancia != null) notaConstancia,
+              if (notaCarta != null) notaCarta,
+              for (final d in documentos)
+                if (d.soloLectura && (d.nota ?? '').isNotEmpty) d.nota!,
+            };
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ConteoDeDocumentos(documentos: documentos),
                 SizedBox(height: t.space.md),
+                // Sin identificación vigente no hay expediente que valga: se
+                // dice arriba, antes de la lista.
+                if (perfil.expediente.documento('identidad')?.estado ==
+                    EstadoDocumento.pendiente) ...[
+                  const _AvisoIdentidad(),
+                  SizedBox(height: t.space.md),
+                ],
+                for (final nota in notasSoloLectura) ...[
+                  PerfilAvisoSoloLectura(
+                    nota: nota,
+                    inmobiliaria: identidad?.inmobiliariaNombre,
+                  ),
+                  SizedBox(height: t.space.md),
+                ],
+                for (final documento in documentos) ...[
+                  DocumentoDelExpedienteFila(
+                    documento: documento,
+                    ocupado: _enCurso == documento.clave,
+                    bloqueado: _enCurso != null || !puedeEntregar,
+                    onEntregar: () =>
+                        _entregar(documento, perfil.catalogos.regimenes),
+                    onVer: documento.tieneArchivo
+                        ? () => openMedia(
+                            context,
+                            documento.urlArchivo,
+                            titulo: documento.nombre,
+                          )
+                        : null,
+                  ),
+                  SizedBox(height: t.space.xs),
+                ],
+                // La carta no se sube: se firma, y su estado vive fuera del
+                // perfil (con el proveedor de firma).
+                if (perfil.expediente.documento('carta') != null) ...[
+                  SizedBox(height: t.space.sm),
+                  FirmaDeCartaPanel(
+                    habilitado: puedeEntregar && notaCarta == null,
+                  ),
+                ],
               ],
-              if (notaConstancia != null) ...[
-                PerfilAvisoSoloLectura(
-                  nota: notaConstancia,
-                  inmobiliaria: identidad?.inmobiliariaNombre,
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// Conteo de documentos por avance: validados, en proceso y pendientes.
+///
+/// Se calcula sobre los documentos que llegaron, no sobre el tally de secciones
+/// del perfil: esa caja cuenta SECCIONES (identidad, fiscal, banco…) y aquí el
+/// agente está viendo documentos, así que los números tienen que hablar de lo
+/// que tiene delante.
+class _ConteoDeDocumentos extends StatelessWidget {
+  final List<DocumentoDelExpediente> documentos;
+
+  const _ConteoDeDocumentos({required this.documentos});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    final tone = t.color;
+
+    final validados = documentos
+        .where((d) => d.estado == EstadoDocumento.validado)
+        .length;
+    final enProceso = documentos
+        .where((d) => d.estado == EstadoDocumento.revision)
+        .length;
+    // Pendiente, rechazado y expirado son lo mismo para el agente: le falta
+    // entregarlo. Separarlos en tres cifras no le dice qué hacer.
+    final pendientes = documentos.where((d) => d.estado.pideArchivo).length;
+
+    final celdas = <({int n, String etiqueta, Color fondo, Color texto})>[
+      (
+        n: validados,
+        etiqueta: 'validados',
+        fondo: tone.primarySoftStrong,
+        texto: tone.primaryHover,
+      ),
+      (
+        n: enProceso,
+        etiqueta: 'en proceso',
+        fondo: tone.warningSoft,
+        texto: tone.warningFg,
+      ),
+      (
+        n: pendientes,
+        etiqueta: 'pendientes',
+        fondo: tone.surfaceAlt,
+        texto: tone.fgMuted,
+      ),
+    ];
+
+    return SCard.outlined(
+      padding: EdgeInsets.all(t.space.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'ESTADO DE TUS DOCUMENTOS',
+            style: t.text.overline.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: tone.fgSubtle,
+            ),
+          ),
+          SizedBox(height: t.space.sm),
+          Row(
+            children: [
+              for (var i = 0; i < celdas.length; i++) ...[
+                if (i > 0) SizedBox(width: t.space.sm),
+                Expanded(
+                  child: _Celda(
+                    n: celdas[i].n,
+                    etiqueta: celdas[i].etiqueta,
+                    fondo: celdas[i].fondo,
+                    texto: celdas[i].texto,
+                  ),
                 ),
-                SizedBox(height: t.space.md),
-              ],
-              for (final documento in documentos) ...[
-                DocumentoDelExpedienteFila(
-                  documento: documento,
-                  ocupado: _enCurso == documento.clave,
-                  bloqueado: _enCurso != null || !puedeEntregar,
-                  onEntregar: () =>
-                      _entregar(documento, perfil.catalogos.regimenes),
-                  onVer: documento.tieneArchivo
-                      ? () => openMedia(
-                          context,
-                          documento.urlArchivo,
-                          titulo: documento.nombre,
-                        )
-                      : null,
-                ),
-                SizedBox(height: t.space.xs),
-              ],
-              // La carta no se sube: se firma, y su estado vive fuera del perfil.
-              if (perfil.expediente.documento('carta') != null) ...[
-                SizedBox(height: t.space.sm),
-                FirmaDeCartaPanel(habilitado: puedeEntregar),
               ],
             ],
-          );
-        },
+          ),
+          SizedBox(height: t.space.sm),
+          Text(
+            '$validados de ${documentos.length} documentos validados',
+            style: t.text.caption.copyWith(
+              fontWeight: FontWeight.w600,
+              color: tone.fgMuted,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// Una cifra del conteo con su etiqueta.
+class _Celda extends StatelessWidget {
+  final int n;
+  final String etiqueta;
+  final Color fondo;
+  final Color texto;
+
+  const _Celda({
+    required this.n,
+    required this.etiqueta,
+    required this.fondo,
+    required this.texto,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: t.space.sm,
+        vertical: t.space.sm,
+      ),
+      decoration: BoxDecoration(
+        color: fondo,
+        borderRadius: t.radius.mdBorder,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$n',
+            style: t.text.h3.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.1,
+              color: texto,
+            ),
+          ),
+          SizedBox(height: t.space.xxs),
+          Text(
+            etiqueta,
+            style: t.text.overline.copyWith(
+              fontWeight: FontWeight.w600,
+              color: texto,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso de que todavía no hay identificación oficial registrada.
 class _AvisoIdentidad extends StatelessWidget {
+  const _AvisoIdentidad();
+
   @override
   Widget build(BuildContext context) {
     final t = context.s;
@@ -381,7 +546,9 @@ class _FirmaDeCartaPanelState extends ConsumerState<FirmaDeCartaPanel> {
                   // Generar un segundo documento cuesta una verificación de
                   // identidad, así que cuando ya hay una firma abierta se
                   // continúa la que existe en vez de crear otra.
-                  label: firma.estado.enCurso ? 'Continuar firma' : 'Firmar carta',
+                  label: firma.estado.enCurso
+                      ? 'Continuar firma'
+                      : 'Firmar carta',
                   icon: Icons.draw_outlined,
                   onPressed: !widget.habilitado || _ocupado || cargando
                       ? null

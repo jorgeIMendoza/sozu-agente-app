@@ -88,107 +88,6 @@ class AppVersionInfo {
       updateMessage = asStringOrNull(j['update_message']);
 }
 
-// ─── cliente-resumen ─────────────────────────────────────────────────────────
-
-class ActividadItem {
-  final int cuentaId;
-  final String propiedad;
-  final String tipo;
-  final String categoria; // adquisicion | patrimonio
-  final double monto;
-  final String? fecha;
-  final String accion;
-  final String urgencia;
-
-  ActividadItem.fromJson(Map<String, dynamic> j)
-    : cuentaId = asInt(j['cuenta_id']),
-      propiedad = asString(j['propiedad'], '-'),
-      tipo = asString(j['tipo']),
-      categoria = asString(j['categoria'], 'adquisicion'),
-      monto = asDouble(j['monto']),
-      fecha = j['fecha'] as String?,
-      accion = asString(j['accion'], 'ver'),
-      urgencia = asString(j['urgencia'], 'future');
-}
-
-class PendientePropiedad {
-  final int cuentaId;
-  final String proyecto;
-  final String unidad;
-  final String tipo;
-  final String? fecha;
-  final double monto;
-  final String urgencia;
-
-  PendientePropiedad.fromJson(Map<String, dynamic> j)
-    : cuentaId = asInt(j['cuenta_id']),
-      proyecto = asString(j['proyecto'], '-'),
-      unidad = asString(j['unidad'], '-'),
-      tipo = asString(j['tipo']),
-      fecha = j['fecha'] as String?,
-      monto = asDouble(j['monto']),
-      urgencia = asString(j['urgencia'], 'future');
-}
-
-class ResumenFinanciero {
-  final double patrimonioTotal;
-  final double invertidoTotal;
-  final double plusvaliaGenerada;
-  final double plusvaliaPorcentaje;
-  final double pagadoTotal;
-  final double porcentajePagado;
-  final double saldoPendiente;
-  final int propiedadesActivas;
-  final double activoValor;
-  final int activoUnidades;
-  final double adquisicionValor;
-  final int adquisicionUnidades;
-
-  /// Mensaje contextual de la etapa activa para "Estás al día" (Fase C).
-  final String? mensajeContexto;
-
-  ResumenFinanciero.fromJson(Map<String, dynamic> j)
-    : patrimonioTotal = asDouble(j['patrimonio_total']),
-      invertidoTotal = asDouble(j['invertido_total']),
-      plusvaliaGenerada = asDouble(j['plusvalia_generada']),
-      plusvaliaPorcentaje = asDouble(j['plusvalia_porcentaje']),
-      pagadoTotal = asDouble(j['pagado_total']),
-      porcentajePagado = asDouble(j['porcentaje_pagado']),
-      saldoPendiente = asDouble(j['saldo_pendiente']),
-      propiedadesActivas = asInt(j['propiedades_activas']),
-      activoValor = asDouble(j['activo_valor']),
-      activoUnidades = asInt(j['activo_unidades']),
-      adquisicionValor = asDouble(j['adquisicion_valor']),
-      adquisicionUnidades = asInt(j['adquisicion_unidades']),
-      mensajeContexto = j['mensaje_contexto'] as String?;
-}
-
-class ClienteResumen {
-  final String nombreLegal;
-  final String iniciales;
-  final String tipoCliente;
-  final ResumenFinanciero resumen;
-  final List<ActividadItem> actividad;
-  final List<PendientePropiedad> pendientesPorPropiedad;
-
-  ClienteResumen.fromJson(Map<String, dynamic> j)
-    : nombreLegal = asString(
-        (j['cliente'] as Map?)?['nombre_legal'],
-        'Cliente',
-      ),
-      iniciales = asString((j['cliente'] as Map?)?['iniciales'], '?'),
-      tipoCliente = asString((j['cliente'] as Map?)?['tipo'], 'Inversionista'),
-      resumen = ResumenFinanciero.fromJson(
-        Map<String, dynamic>.from(j['resumen'] as Map),
-      ),
-      actividad = ((j['actividad'] as List?) ?? [])
-          .map((e) => ActividadItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList(),
-      pendientesPorPropiedad = ((j['pendientes_por_propiedad'] as List?) ?? [])
-          .map((e) => PendientePropiedad.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-}
-
 // ─── cliente-pagos ───────────────────────────────────────────────────────────
 
 /// Pago aplicado a un acuerdo (abono): permite ver desglose, recibo y CEP por
@@ -1397,7 +1296,7 @@ class ClienteDocumentos {
       total = asInt(j['total']);
 }
 
-// ─── cliente-notificaciones ──────────────────────────────────────────────────
+// ─── agente-notificaciones ──────────────────────────────────────────────────
 
 class Notificacion {
   final int id;
@@ -1427,14 +1326,14 @@ class Notificacion {
       leida = j['leida'] == true;
 }
 
-class ClienteNotificaciones {
+class BandejaDeNotificaciones {
   final List<Notificacion> notificaciones;
   final int noLeidas;
 
   /// Animación de llegada configurada por el admin: sobre | gol | cohete.
   final String animacionCampana;
 
-  ClienteNotificaciones.fromJson(Map<String, dynamic> j)
+  BandejaDeNotificaciones.fromJson(Map<String, dynamic> j)
     : notificaciones = ((j['notificaciones'] as List?) ?? [])
           .map((e) => Notificacion.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
@@ -1823,21 +1722,3 @@ class AnalisisDocumento {
   bool get sinTexto => resultado == 'sin_texto';
 }
 
-// ─── cliente-menu ────────────────────────────────────────────────────────────
-
-/// Ítem del menú del Portal del Agente servido por la edge function
-/// `cliente-menu` (submenús activos y permitidos, mismo criterio que el portal
-/// web). `route` es la `vista_front_end` del portal (p.ej.
-/// `/admin/portal-cliente/inicio`); la app la mapea a su ruta interna + icono.
-class MenuItemDto {
-  final int id;
-  final String label;
-  final String route;
-  final int orden;
-
-  MenuItemDto.fromJson(Map<String, dynamic> j)
-    : id = asInt(j['id']),
-      label = asString(j['label']),
-      route = asString(j['route']),
-      orden = asInt(j['orden']);
-}
