@@ -6,15 +6,12 @@ import 'package:flutter/foundation.dart'
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
-/// ⚠️ PENDIENTE DE REGENERAR. Estos ids vienen heredados de la app de CLIENTES
-/// (`sozu-cliente-app`): el proyecto de Firebase es el correcto
-/// (`sozu-admin-prd`) pero los `appId` de Android e iOS son de las apps del
-/// cliente. Mientras no se registren las apps del bundle
-/// `com.sozu.agentes_app` / `com.sozu.sozuAgenteApp` y no se regenere este
-/// archivo con `flutterfire configure`, los push del agente llegarían a la app
-/// equivocada y el build de Android falla en el plugin de Google Services
-/// ("No matching client found for package name"). La web NO usa este archivo,
-/// así que el localhost y el deploy de hosting funcionan igual.
+/// Generado con los ids de las apps de AGENTES del proyecto sozu-admin-prd
+/// (`SOZU Agentes Android` con package com.sozu.agentes_app y `SOZU Agentes iOS`
+/// con bundle com.sozu.sozuAgenteApp). Si se registra otra app o se cambia el
+/// bundle, hay que volver a bajar los archivos: `google-services.json`,
+/// `GoogleService-Info.plist` y estos ids tienen que apuntar todos a lo mismo o
+/// los push del agente llegan a la app equivocada.
 ///
 /// Example:
 /// ```dart
@@ -61,7 +58,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBi_e43N8DiR34RwAYaAJKeTlNzGoVCAzk',
-    appId: '1:334194000163:android:3faec92654ee45a09a8c96',
+    appId: '1:334194000163:android:6800f8d827ea4c9c9a8c96',
     messagingSenderId: '334194000163',
     projectId: 'sozu-admin-prd',
     storageBucket: 'sozu-admin-prd.firebasestorage.app',
@@ -69,7 +66,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCFThDpr_h4gEsWCWlLVZukZJZWDyVFNJs',
-    appId: '1:334194000163:ios:c1972723d94e278e9a8c96',
+    appId: '1:334194000163:ios:02fe9a130f72d2209a8c96',
     messagingSenderId: '334194000163',
     projectId: 'sozu-admin-prd',
     storageBucket: 'sozu-admin-prd.firebasestorage.app',

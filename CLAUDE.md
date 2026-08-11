@@ -9,9 +9,17 @@ aplique a los dos va a los dos.
 Código compartido en `lib/`; plataformas: `android/`, `ios/` (build requiere Mac),
 `web/` (target principal de prueba: Chrome).
 
+## Ambiente: PRODUCCIÓN y nada más
+Esta app **no tiene ambiente de desarrollo propio**, igual que la del cliente.
+`assets/env` apunta al proyecto de producción (`tzmhgfjmddkfyffkkmto`) y el
+localhost consume las Edge Functions productivas. Consecuencia práctica: lo que
+se prueba en localhost es exactamente lo que ve el agente, y **toda escritura de
+prueba cae en datos reales** — al probar, preferir lecturas y usuarios de prueba.
+
 Las Edge Functions `agente-*` que alimentan el app viven en el repo
-`sozu-edge-functions`, NO aquí: se editan y despliegan allá (rama `dev` → VPS de
-desarrollo, `main` → Supabase Cloud de producción).
+`sozu-edge-functions`, NO aquí. Ahí sí hay dos ambientes y el ciclo es `dev` →
+VPS de desarrollo, `main` → Supabase Cloud de producción; esta app solo consume
+lo que ya está en `main`.
 
 ## Stack
 - Flutter stable (SDK en ~/flutter dentro de WSL/Arch) + Dart. Material 3.
