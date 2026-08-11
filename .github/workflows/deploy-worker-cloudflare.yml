@@ -31,23 +31,46 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy --config tool/cloudflare/wrangler.toml
 
-      # Comprueba que el redirector siga redirigiendo. Un 200 en vez de un 302
-      # significa que algo se rompió: el QR abriría una página en blanco.
-      - name: Verificar que redirige
+      # Un redirector roto no lo reporta nadie: simplemente no instalan la app.
+      # Se comprueban los tres caminos que el worker distingue por User-Agent.
+      - name: Verificar los tres caminos
         run: |
           set -e
-          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' \
-            -H 'User-Agent: Mozilla/5.0 (Linux; Android 14) Mobile' \
-            'https://obtener-agentes-app.sozu.com')
-          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' \
-            -H 'User-Agent: Mozilla/5.0 (Linux; Android 14) Mobile' \
-            'https://obtener-agentes-app.sozu.com')
-          echo "Android -> $CODIGO $DESTINO"
-          case "$CODIGO" in
-            30*) ;;
-            *) echo "ERROR: se esperaba una redirección y llegó $CODIGO"; exit 1 ;;
-          esac
+          URL='https://obtener-agentes-app.sozu.com'
+          UA_ANDROID='Mozilla/5.0 (Linux; Android 14) Mobile'
+          UA_IPHONE='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile'
+          UA_PC='Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+
+          # Android: siempre a Play, y con el package de AGENTES. Que apunte al de
+          # clientes es el error más fácil de cometer y el más difícil de notar.
+          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_ANDROID" "$URL")
+          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' -H "User-Agent: $UA_ANDROID" "$URL")
+          echo "Android  -> $CODIGO $DESTINO"
+          case "$CODIGO" in 30*) ;; *) echo "ERROR: se esperaba redirección, llegó $CODIGO"; exit 1 ;; esac
           case "$DESTINO" in
-            *play.google.com*com.sozu.agentes_app*) echo "OK: manda a la app de agentes en Play." ;;
-            *) echo "ERROR: destino inesperado ($DESTINO). ¿El package cambió?"; exit 1 ;;
+            *play.google.com*id=com.sozu.agentes_app*) ;;
+            *) echo "ERROR: destino inesperado. ¿El package cambió o quedó el de clientes?"; exit 1 ;;
           esac
+
+          # iOS: mientras no haya ficha, página de "Próximamente" (200). Cuando se
+          # publique, redirección a App Store. Cualquiera de las dos es válida; lo
+          # que NO se acepta es mandar a una ficha que no existe.
+          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_IPHONE" "$URL")
+          CUERPO=$(curl -s -H "User-Agent: $UA_IPHONE" "$URL" | head -c 2000)
+          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' -H "User-Agent: $UA_IPHONE" "$URL")
+          echo "iPhone   -> $CODIGO ${DESTINO:-(html)}"
+          if [ "$CODIGO" = "200" ]; then
+            echo "$CUERPO" | grep -qi 'Pr.ximamente' \
+              || { echo "ERROR: 200 sin la página de Próximamente."; exit 1; }
+          else
+            case "$DESTINO" in
+              *apps.apple.com*id[0-9]*) ;;
+              *) echo "ERROR: redirección de iOS a un destino sin id de App Store ($DESTINO)"; exit 1 ;;
+            esac
+          fi
+
+          # Escritorio: la landing con los dos botones.
+          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_PC" "$URL")
+          echo "Escritorio -> $CODIGO"
+          [ "$CODIGO" = "200" ] || { echo "ERROR: la landing de escritorio no responde 200."; exit 1; }
+          echo "OK: los tres caminos responden como deben."
