@@ -5,24 +5,24 @@ import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Diámetro del avatar de la fila. Público porque el skeleton de la lista lo
 /// replica: si divergen, la lista brinca al terminar de cargar.
-const double kClientRowAvatarSize = 36;
+const double kAgenteRowAvatarSize = 36;
 
-/// Fila de cliente del selector de super admin: nombre, correo y estado.
+/// Fila de agente del selector "Ver como agente": nombre, correo, rol y estado.
 ///
 /// Componente **tonto**: recibe el dato, si está isSelected y qué hacer al
 /// tocar. No lee providers ni navega - eso lo decide la pantalla. Así se puede
 /// montar en un test o en otra vista sin arrastrar Riverpod.
-class ClientRow extends StatelessWidget {
-  final AdminCliente client;
+class AgenteRow extends StatelessWidget {
+  final AdminAgente agente;
 
-  /// El cliente que el admin está viendo ahora mismo (impersonado).
+  /// El agente que el admin está viendo ahora mismo (impersonado).
   final bool isSelected;
 
   final VoidCallback onTap;
 
-  const ClientRow({
+  const AgenteRow({
     super.key,
-    required this.client,
+    required this.agente,
     required this.onTap,
     this.isSelected = false,
   });
@@ -49,7 +49,7 @@ class ClientRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _Avatar(name: client.nombre),
+              _Avatar(name: agente.nombre),
               SizedBox(width: t.space.sm),
               Expanded(
                 child: Column(
@@ -57,15 +57,15 @@ class ClientRow extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      client.nombre,
+                      agente.nombre,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: t.text.label.copyWith(color: c.fg),
                     ),
-                    if (client.email != null) ...[
+                    if (agente.email != null) ...[
                       SizedBox(height: t.space.xxs),
                       Text(
-                        client.email!,
+                        agente.email!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: t.text.caption.copyWith(color: c.fgMuted),
@@ -75,6 +75,13 @@ class ClientRow extends StatelessWidget {
                 ),
               ),
               SizedBox(width: t.space.xs),
+              // El rol va en la fila y no solo en el filtro: con "Todos" activo
+              // dos agentes con el mismo nombre de pila solo se distinguen por
+              // aquí, y es lo que decide qué portal va a ver el admin.
+              if (agente.rolEtiqueta != null) ...[
+                _RolBadge(agente: agente),
+                SizedBox(width: t.space.xs),
+              ],
               if (isSelected)
                 _ViewingBadge(label: 'Viendo')
               else
@@ -105,8 +112,8 @@ class _Avatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.s;
     return Container(
-      width: kClientRowAvatarSize,
-      height: kClientRowAvatarSize,
+      width: kAgenteRowAvatarSize,
+      height: kAgenteRowAvatarSize,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: t.color.primarySoftStrong,
@@ -120,6 +127,25 @@ class _Avatar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Insignia del rol. En pantalla angosta se abrevia: "Agente Inmobiliario"
+/// completo empuja el correo a puntos suspensivos en un teléfono.
+class _RolBadge extends StatelessWidget {
+  final AdminAgente agente;
+
+  const _RolBadge({required this.agente});
+
+  @override
+  Widget build(BuildContext context) {
+    final corto = context.bp.isMobile;
+    final label = switch (agente.rol) {
+      RolAgente.inmobiliario => corto ? 'Inmobiliario' : 'Agente Inmobiliario',
+      RolAgente.interno => corto ? 'Interno' : 'Agente Interno',
+      null => agente.rolNombre!,
+    };
+    return SBadge(label: label, tone: SBadgeTone.neutral, size: SBadgeSize.sm);
   }
 }
 

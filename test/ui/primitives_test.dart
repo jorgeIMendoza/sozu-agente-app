@@ -225,50 +225,78 @@ void main() {
     });
   });
 
-  group('ClientFilters', () {
-    Widget build({required List<CatalogoItem> projects}) {
-      final unit = TextEditingController();
-      return ClientFilters(
-        projects: projects,
-        projectId: null,
-        onProjectChanged: (_) {},
-        unitController: unit,
-        onUnitChanged: (_) {},
-        onUnitCleared: () {},
-      );
-    }
+  group('AgenteRoleFilter', () {
+    Widget build({
+      RolAgente? rol,
+      ValueChanged<RolAgente?>? onRolChanged,
+      Map<RolAgente, int> conteos = const {},
+      int? total,
+    }) => AgenteRoleFilter(
+      rol: rol,
+      onRolChanged: onRolChanged ?? (_) {},
+      conteos: conteos,
+      total: total,
+    );
 
-    // Los dos campos son STextField y se distinguen por su etiqueta. Se busca el
-    // STextField y NO el TextField interno: la etiqueta dejo de ser flotante, asi
-    // que es un `Text` hermano del campo dentro de la Column del STextField, no
-    // un descendiente del TextField.
-    Offset topLeftOfField(WidgetTester tester, String label) =>
-        tester.getTopLeft(
-          find
-              .ancestor(of: find.text(label), matching: find.byType(STextField))
-              .first,
-        );
+    testWidgets('los dos roles del portal son las unicas opciones', (
+      tester,
+    ) async {
+      await pump(tester, build(), size: const Size(1280, 800));
 
-    testWidgets('en desktop van en fila', (tester) async {
-      await pump(
-        tester,
-        build(projects: const []),
-        size: const Size(1280, 800),
-      );
-      expect(
-        topLeftOfField(tester, 'Proyecto').dy,
-        topLeftOfField(tester, 'Unidad').dy,
-      );
+      // Ni un tercer rol ni un "Sin rol": quien no es 3 ni 9 no entra al portal,
+      // asi que no hay nada que impersonar fuera de estos dos.
+      expect(find.byType(SChoiceChip), findsNWidgets(3));
+      expect(find.text('Todos'), findsOneWidget);
+      expect(find.text('Agente Inmobiliario'), findsOneWidget);
+      expect(find.text('Agente Interno'), findsOneWidget);
     });
 
-    testWidgets('en movil se apilan', (tester) async {
-      await pump(tester, build(projects: const []), size: const Size(360, 800));
-      // A 360 px, en fila el campo de proyecto quedaba con ~200 px y truncaba
-      // cualquier nombre.
-      expect(
-        topLeftOfField(tester, 'Unidad').dy,
-        greaterThan(topLeftOfField(tester, 'Proyecto').dy),
+    testWidgets('sin rol activo, "Todos" es la pastilla seleccionada', (
+      tester,
+    ) async {
+      await pump(tester, build(), size: const Size(1280, 800));
+
+      final chips = tester
+          .widgetList<SChoiceChip>(find.byType(SChoiceChip))
+          .toList();
+      expect(chips.first.selected, isTrue);
+      expect(chips.where((c) => c.selected), hasLength(1));
+    });
+
+    testWidgets('el conteo se anota en la pastilla, y sin dato no sale', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        build(conteos: const {RolAgente.inmobiliario: 12}, total: 20),
+        size: const Size(1280, 800),
       );
+
+      expect(find.text('Todos (20)'), findsOneWidget);
+      expect(find.text('Agente Inmobiliario (12)'), findsOneWidget);
+      // Un cero seria mentira mientras el conteo no llega: la pastilla va pelona.
+      expect(find.text('Agente Interno'), findsOneWidget);
+    });
+
+    testWidgets('tocar un rol lo reporta y no depende del valor invertido', (
+      tester,
+    ) async {
+      final elegidos = <RolAgente?>[];
+      await pump(
+        tester,
+        build(rol: RolAgente.interno, onRolChanged: elegidos.add),
+        size: const Size(1280, 800),
+      );
+
+      await tester.tap(find.text('Agente Interno'));
+      await tester.pump();
+      // Es excluyente: volver a tocar el rol activo lo deja activo, NO lo apaga.
+      // Para quitar el filtro esta "Todos".
+      expect(elegidos, [RolAgente.interno]);
+
+      await tester.tap(find.text('Todos'));
+      await tester.pump();
+      expect(elegidos, [RolAgente.interno, null]);
     });
   });
 }

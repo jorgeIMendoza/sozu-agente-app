@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,16 +13,21 @@ import 'package:sozu_agente_app/features/admin/layouts/admin_layout.dart';
 import 'package:sozu_agente_app/features/admin/components/agente_row.dart';
 import 'package:sozu_agente_app/features/admin/components/agente_filters.dart';
 
-/// Selector de cliente para administradores de la app. El admin elige un
-/// cliente y navega el portal viendo sus datos.
+/// Selector de agente para administradores de la app. El admin elige un agente
+/// y navega el portal viendo exactamente lo que ese agente vería al entrar.
 ///
 /// Sirve en web Y en móvil: es el destino post-login de cualquier rol con
-/// `canManageAgentApp`, sin importar la plataforma. Los filtros se apilan en
-/// pantalla angosta (`ClientFilters`).
+/// `canManageAgentApp`, sin importar la plataforma.
 ///
-/// Al filtrar por Proyecto + Unidad (número de propiedad) se muestran SOLO los
-/// dueños de esa unidad: "Copropietarios (N)", o "Dueño de la propiedad" si es
-/// uno. Sin filtro, se busca por nombre o correo.
+/// Dos formas de acotar, y se combinan: el filtro de **rol** ([AgenteRoleFilter],
+/// Agente Inmobiliario 3 / Agente Interno 9) y el **buscador** por nombre o
+/// correo. Sin nada seleccionado se lista todo: los agentes son decenas, así que
+/// la lista completa es útil, a diferencia del selector de clientes (miles) del
+/// que esta pantalla venía portada y que exigía escribir antes de mostrar algo.
+///
+/// El filtrado es LOCAL sobre la respuesta de `admin-agentes`: un endpoint por
+/// combinación de filtros no compra nada a esta escala y sí agrega latencia por
+/// cada tecla.
 ///
 /// ## Estructura
 ///
@@ -32,73 +35,55 @@ import 'package:sozu_agente_app/features/admin/components/agente_filters.dart';
 /// de los filtros y decide qué mostrar. Todo lo visual vive en componentes:
 ///
 /// * [AdminHeaderBar] / [AdminHeaderAction] - encabezado y acciones
-/// * [ClientFilters] - Proyecto + Unidad
+/// * [AgenteRoleFilter] - pastillas de rol
 /// * [SSearchField] - buscador
-/// * [ClientRow] - fila de cliente
-/// * [SSectionLabel] - encabezado de grupo
+/// * [AgenteRow] - fila de agente
 /// * [SEmptyState] - vacíos e instrucciones
-///
-/// Antes eran ~480 líneas con seis `Widget _algo(SozuColorRoles tone)` privados
-/// pasándose el tema a mano, estilos de texto cocidos a mano y el layout
-/// mezclado con la lógica de filtrado.
-class SelectClientScreen extends ConsumerStatefulWidget {
-  const SelectClientScreen({super.key});
+class SelectAgenteScreen extends ConsumerStatefulWidget {
+  const SelectAgenteScreen({super.key});
 
   @override
-  ConsumerState<SelectClientScreen> createState() => _SelectClientScreenState();
+  ConsumerState<SelectAgenteScreen> createState() => _SelectAgenteScreenState();
 }
 
-class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
-  static const _minQueryLength = 2;
-
+class _SelectAgenteScreenState extends ConsumerState<SelectAgenteScreen> {
   final _search = TextEditingController();
-  final _unit = TextEditingController();
-  Timer? _debounce;
 
   String _query = '';
-  int? _projectId;
-  String _unitQuery = '';
+  RolAgente? _rol;
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _search.dispose();
-    _unit.dispose();
     super.dispose();
   }
 
-  bool get _queryTooShort => _query.trim().length < _minQueryLength;
-
-  bool get _isPropertyFilterActive =>
-      _projectId != null && _unitQuery.isNotEmpty;
-
-  void _onUnitChanged(String v) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) setState(() => _unitQuery = v.trim());
-    });
-  }
-
-  void _clearUnit() {
-    _debounce?.cancel();
-    _unit.clear();
-    setState(() => _unitQuery = '');
-  }
-
-  List<AdminCliente> _filterBy(List<AdminCliente> clients) {
+  /// Agentes del rol activo, luego los que coinciden con la búsqueda. El orden
+  /// lo manda el backend (alfabético) y no se reordena.
+  List<AdminAgente> _filterBy(List<AdminAgente> agentes) {
     final q = _query.trim().toLowerCase();
-    if (q.length < _minQueryLength) return const [];
-    return clients
-        .where(
-          (c) =>
-              c.nombre.toLowerCase().contains(q) ||
-              (c.email ?? '').toLowerCase().contains(q),
-        )
-        .toList();
+    return agentes.where((a) {
+      if (_rol != null && a.rol != _rol) return false;
+      if (q.isEmpty) return true;
+      return a.nombre.toLowerCase().contains(q) ||
+          (a.email ?? '').toLowerCase().contains(q);
+    }).toList();
   }
 
-  void _viewAs(AdminCliente c) {
-    ref.read(impersonationProvider).select(c.idPersona, c.nombre, c.email);
+  /// Cuántos agentes hay por rol, para anotar las pastillas. Se cuenta sobre la
+  /// lista completa a propósito: si contara sobre lo ya filtrado, el número de
+  /// cada pastilla cambiaría al tocar otra.
+  Map<RolAgente, int> _conteos(List<AdminAgente> agentes) {
+    final out = <RolAgente, int>{};
+    for (final a in agentes) {
+      final rol = a.rol;
+      if (rol != null) out[rol] = (out[rol] ?? 0) + 1;
+    }
+    return out;
+  }
+
+  void _viewAs(AdminAgente a) {
+    ref.read(impersonationProvider).select(a.idPersona, a.nombre, a.email);
     context.go('/inicio');
   }
 
@@ -107,6 +92,8 @@ class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
     final t = context.s;
     final auth = ref.watch(authProvider);
     final imp = ref.watch(impersonationProvider);
+    final agentes = ref.watch(adminAgentesProvider);
+    final todos = agentes.asData?.value.agentes;
 
     return AdminLayout(
       // 880 y no el default: con el encabezado y las acciones dentro del mismo
@@ -116,7 +103,7 @@ class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AdminHeaderBar(
-            title: 'Selecciona un cliente',
+            title: 'Selecciona un agente',
             subtitle:
                 'Acceso administrador · '
                 '${auth.profile?.displayName ?? auth.profile?.email ?? ''}',
@@ -140,19 +127,15 @@ class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
           ),
           SizedBox(height: t.space.md),
           _FiltersPanel(
-            projects:
-                ref.watch(adminProjectsProvider).asData?.value ??
-                const <CatalogoItem>[],
-            projectId: _projectId,
-            onProjectChanged: (v) => setState(() => _projectId = v),
-            unitController: _unit,
-            onUnitChanged: _onUnitChanged,
-            onUnitCleared: _clearUnit,
+            rol: _rol,
+            onRolChanged: (v) => setState(() => _rol = v),
+            conteos: todos == null ? const {} : _conteos(todos),
+            total: todos?.length,
             searchController: _search,
             onQueryChanged: (v) => setState(() => _query = v),
           ),
           SizedBox(height: t.space.md),
-          _results(),
+          _results(agentes),
         ],
       ),
     );
@@ -164,110 +147,44 @@ class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
 
   /// El contenido NO trae scroll propio: el de la página lo da [AdminLayout].
   /// Por eso las listas van como `Column` y no como `ListView`.
-  Widget _results() {
-    final clients = ref.watch(adminClientsProvider);
+  Widget _results(AsyncValue<AdminAgentes> agentes) {
     final t = context.s;
 
-    // Con el filtro Proyecto + Unidad activo solo se muestran los dueños de esa
-    // unidad. Antes debajo iba un segundo bloque "Todos los clientes", que en la
-    // practica repetia el buscador de arriba: si ya acotaste a una unidad, la
-    // lista completa no aporta y solo alarga la pantalla.
-    if (_isPropertyFilterActive) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: _ownersSection(),
-      );
-    }
-
-    return clients.when(
+    return agentes.when(
       loading: () => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < 4; i++) ...[
-            const _ClientRowSkeleton(),
+            const _AgenteRowSkeleton(),
             SizedBox(height: t.space.xs),
           ],
         ],
       ),
       error: (_, __) => SErrorState(
-        title: 'No pudimos cargar la lista de clientes',
-        onRetry: () => ref.invalidate(adminClientsProvider),
+        title: 'No pudimos cargar la lista de agentes',
+        onRetry: () => ref.invalidate(adminAgentesProvider),
       ),
       data: (data) {
-        final items = _filterBy(data.clientes);
-        if (_queryTooShort) {
+        if (data.agentes.isEmpty) {
           return const SEmptyState(
             icon: Icons.person_search_outlined,
-            title: 'Busca un cliente',
+            title: 'Sin agentes',
             message:
-                'Escribe al menos $_minQueryLength letras del nombre o '
-                'correo, o filtra por proyecto y unidad.',
+                'Ningún usuario con rol de agente puede entrar al portal '
+                'todavía.',
           );
         }
+        final items = _filterBy(data.agentes);
         if (items.isEmpty) {
           return SEmptyState(
             icon: Icons.search_off_outlined,
             title: 'Sin resultados',
-            message: 'No encontramos clientes para "$_query".',
+            message: _query.trim().isEmpty
+                ? 'Ningún agente tiene ese rol.'
+                : 'No encontramos agentes para "$_query".',
           );
         }
-        return _ClientList(clients: items, onTap: _viewAs);
-      },
-    );
-  }
-
-  /// Sección "Copropietarios (N)" / "Dueño de la propiedad", solo cuando el
-  /// filtro Proyecto + Unidad está activo.
-  List<Widget> _ownersSection() {
-    final t = context.s;
-    final owners = ref.watch(
-      adminOwnersProvider((projectId: _projectId!, propertyNumber: _unitQuery)),
-    );
-
-    return owners.when(
-      loading: () => [
-        const SSectionLabel(text: 'Copropietarios', icon: Icons.group_outlined),
-        const _ClientRowSkeleton(),
-        SizedBox(height: t.space.md),
-      ],
-      error: (_, __) => [
-        SErrorState(
-          title: 'No pudimos cargar los clientes de la unidad',
-          onRetry: () => ref.invalidate(adminOwnersProvider),
-        ),
-        SizedBox(height: t.space.md),
-      ],
-      data: (items) {
-        if (items.isEmpty) {
-          return [
-            const SSectionLabel(
-              text: 'Copropietarios',
-              icon: Icons.group_outlined,
-            ),
-            const _InlineNote(
-              'No encontramos clientes vinculados a esa unidad.',
-            ),
-            SizedBox(height: t.space.md),
-          ];
-        }
-        return [
-          SSectionLabel(
-            text: items.length > 1
-                ? 'Copropietarios (${items.length})'
-                : 'Dueño de la propiedad',
-            icon: Icons.group_outlined,
-          ),
-          for (final client in items) ...[
-            ClientRow(
-              client: client,
-              isSelected:
-                  ref.watch(impersonationProvider).personaId == client.idPersona,
-              onTap: () => _viewAs(client),
-            ),
-            SizedBox(height: t.space.xs),
-          ],
-          SizedBox(height: t.space.xs),
-        ];
+        return _AgenteList(agentes: items, onTap: _viewAs);
       },
     );
   }
@@ -277,28 +194,24 @@ class _SelectClientScreenState extends ConsumerState<SelectClientScreen> {
 // Partes locales
 // ---------------------------------------------------------------------------
 
-/// Tarjeta que agrupa filtros + buscador.
+/// Tarjeta que agrupa el filtro de rol + el buscador.
 ///
-/// Es una superficie propia sobre el fondo de página: agrupar los tres controles
+/// Es una superficie propia sobre el fondo de página: agrupar los dos controles
 /// en una card los lee como un solo bloque de "acotar la búsqueda", en vez de
-/// tres campos sueltos flotando.
+/// dos controles sueltos flotando.
 class _FiltersPanel extends StatelessWidget {
-  final List<CatalogoItem> projects;
-  final int? projectId;
-  final ValueChanged<int?> onProjectChanged;
-  final TextEditingController unitController;
-  final ValueChanged<String> onUnitChanged;
-  final VoidCallback onUnitCleared;
+  final RolAgente? rol;
+  final ValueChanged<RolAgente?> onRolChanged;
+  final Map<RolAgente, int> conteos;
+  final int? total;
   final TextEditingController searchController;
   final ValueChanged<String> onQueryChanged;
 
   const _FiltersPanel({
-    required this.projects,
-    required this.projectId,
-    required this.onProjectChanged,
-    required this.unitController,
-    required this.onUnitChanged,
-    required this.onUnitCleared,
+    required this.rol,
+    required this.onRolChanged,
+    required this.conteos,
+    required this.total,
     required this.searchController,
     required this.onQueryChanged,
   });
@@ -313,18 +226,16 @@ class _FiltersPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClientFilters(
-            projects: projects,
-            projectId: projectId,
-            onProjectChanged: onProjectChanged,
-            unitController: unitController,
-            onUnitChanged: onUnitChanged,
-            onUnitCleared: onUnitCleared,
+          AgenteRoleFilter(
+            rol: rol,
+            onRolChanged: onRolChanged,
+            conteos: conteos,
+            total: total,
           ),
-          SizedBox(height: t.space.xs),
+          SizedBox(height: t.space.sm),
           SSearchField(
             controller: searchController,
-            label: 'Cliente',
+            label: 'Agente',
             hintText: 'Alex Hernández o alex@example.com',
             // Solo donde hay teclado físico: en teléfono, abrirlo al entrar tapa
             // media pantalla antes de que el usuario pida escribir.
@@ -337,11 +248,11 @@ class _FiltersPanel extends StatelessWidget {
   }
 }
 
-class _ClientList extends StatelessWidget {
-  final List<AdminCliente> clients;
-  final void Function(AdminCliente) onTap;
+class _AgenteList extends StatelessWidget {
+  final List<AdminAgente> agentes;
+  final void Function(AdminAgente) onTap;
 
-  const _ClientList({required this.clients, required this.onTap});
+  const _AgenteList({required this.agentes, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -351,7 +262,7 @@ class _ClientList extends StatelessWidget {
       padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: clients.length,
+      itemCount: agentes.length,
       separatorBuilder: (_, __) => SizedBox(height: t.space.xs),
       // Entrada escalonada: cada fila entra un poco después de la anterior, así
       // la lista se lee como algo que llega y no como un parpadeo del skeleton
@@ -360,33 +271,14 @@ class _ClientList extends StatelessWidget {
       itemBuilder: (context, i) => SFadeInUp(
         delay: SStaggered.delayForIndex(i),
         child: Consumer(
-          builder: (context, ref, _) => ClientRow(
-            client: clients[i],
+          builder: (context, ref, _) => AgenteRow(
+            agente: agentes[i],
             isSelected:
                 ref.watch(impersonationProvider).personaId ==
-                clients[i].idPersona,
-            onTap: () => onTap(clients[i]),
+                agentes[i].idPersona,
+            onTap: () => onTap(agentes[i]),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Nota de una línea dentro de la lista (no amerita un estado vacío completo).
-class _InlineNote extends StatelessWidget {
-  final String text;
-
-  const _InlineNote(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: t.space.xs),
-      child: Text(
-        text,
-        style: t.text.bodySmall.copyWith(color: t.color.fgMuted),
       ),
     );
   }
@@ -396,11 +288,11 @@ class _InlineNote extends StatelessWidget {
 /// nombre: dos renglones del mismo ancho se leen como un solo bloque gris.
 const double _emailSkeletonWidth = 180;
 
-/// Réplica en gris de [ClientRow]. Las medidas salen de los mismos tokens que
-/// la fila real ([kClientRowAvatarSize], `text.label`, `text.caption`) para que
+/// Réplica en gris de [AgenteRow]. Las medidas salen de los mismos tokens que
+/// la fila real ([kAgenteRowAvatarSize], `text.label`, `text.caption`) para que
 /// la lista no brinque al llegar los datos.
-class _ClientRowSkeleton extends StatelessWidget {
-  const _ClientRowSkeleton();
+class _AgenteRowSkeleton extends StatelessWidget {
+  const _AgenteRowSkeleton();
 
   @override
   Widget build(BuildContext context) {
@@ -415,8 +307,8 @@ class _ClientRowSkeleton extends StatelessWidget {
       child: Row(
         children: [
           const SSkeleton(
-            width: kClientRowAvatarSize,
-            height: kClientRowAvatarSize,
+            width: kAgenteRowAvatarSize,
+            height: kAgenteRowAvatarSize,
           ),
           SizedBox(width: t.space.sm),
           Expanded(

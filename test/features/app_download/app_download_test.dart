@@ -41,12 +41,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  test('sin config: Android cae en la constante, iOS queda sin destino', () {
+  test('sin config: Android cae en el redirector, iOS queda sin destino', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    expect(appDownloadTarget(), contains('play.google.com'));
-    // El referrer viaja con el respaldo: sin él, la instalación desde el login
-    // no se atribuye igual que la del QR.
-    expect(appDownloadTarget(), contains('utm_source'));
+    // NO un listing de Play escrito a mano: si el package no está publicado,
+    // Play responde 404 y su app lo muestra como "Elemento no encontrado". El
+    // redirector es el único que sabe si ya se publicó, y el QR va al mismo.
+    expect(appDownloadTarget(), contains('obtener-agentes-app'));
+    expect(appDownloadTarget(), isNot(contains('clientes_app')));
 
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     expect(appDownloadTarget(), isNull);

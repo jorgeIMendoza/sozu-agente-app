@@ -252,22 +252,16 @@ class AppStoreDownloadButton extends StatelessWidget {
   }
 }
 
-/// Respaldo si la config no llega. El `referrer` es el del redirector: partirlo
-/// separaría la atribución del QR y la del login.
-const _kPlayUrl =
-    'https://play.google.com/store/apps/details?id=com.sozu.clientes_app'
-    '&referrer=utm_source%3Dqr%26utm_medium%3Dimpreso';
-
 String? _oNull(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
 
 /// Tienda de ESTE dispositivo, o `null` si aún no publica la app.
 ///
 /// Las URLs vienen de `app_agente_config` vía el gate de versión: publicar iOS
-/// es llenar una fila, sin recompilar. Sin config, Android cae en la constante
+/// es llenar una fila, sin recompilar. Sin config, Android cae en el redirector
 /// y iOS en "próximamente"; nunca un enlace muerto.
 String? appDownloadTarget({String? androidStoreUrl, String? iosStoreUrl}) =>
     switch (defaultTargetPlatform) {
-      TargetPlatform.android => _oNull(androidStoreUrl) ?? _kPlayUrl,
+      TargetPlatform.android => _oNull(androidStoreUrl) ?? kAppDownloadUrl,
       TargetPlatform.iOS => _oNull(iosStoreUrl),
       _ => kAppDownloadUrl,
     };
@@ -300,7 +294,7 @@ Future<void> openAppStore(
 /// Pinta el QR decodificándolo al tamaño en que se va a ver.
 ///
 /// El asset son 1080 px y la tarjeta lo muestra a 88: reducir 12x al DIBUJAR usa
-/// un filtro bilineal que come módulos, y el resultado no solo se ve borroso —
+/// un filtro bilineal que come módulos, y el resultado no solo se ve borroso:
 /// deja de escanear. Medido con un decodificador: el mismo PNG a 88 px por la vía
 /// del dibujo NO decodifica, y decodificado a 88 px sí. `cacheWidth`/`cacheHeight`
 /// mueven el reescalado al decodificador, que promedia el área.

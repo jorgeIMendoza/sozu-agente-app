@@ -28,31 +28,35 @@ class FakeAdminPort implements AdminPort {
   static CatalogoItem _item(int id, String name) =>
       CatalogoItem.fromJson({'id': id, 'nombre': name});
 
+  /// Uno de cada rol y uno con rol desconocido: los tres casos que la UI tiene
+  /// que saber pintar y filtrar.
   @override
-  Future<AdminClientes> clients() async {
-    _throwIfFailing('clients');
-    return AdminClientes.fromJson({
-      'clientes': [
-        {'id_persona': 7, 'nombre': 'Alex Hernández', 'email': 'alex@x.com'},
-        {'id_persona': 8, 'nombre': 'Bruno Pérez', 'email': 'bruno@x.com'},
+  Future<AdminAgentes> agentes() async {
+    _throwIfFailing('agentes');
+    return AdminAgentes.fromJson({
+      'agentes': [
+        {
+          'id_persona': 7,
+          'nombre': 'Alex Hernández',
+          'email': 'alex@x.com',
+          'rol_id': 3,
+          'rol_nombre': 'Agente Inmobiliario',
+        },
+        {
+          'id_persona': 8,
+          'nombre': 'Bruno Pérez',
+          'email': 'bruno@x.com',
+          'rol_id': 9,
+          'rol_nombre': 'Agente Interno',
+        },
+        {
+          'id_persona': 9,
+          'nombre': 'Carla Ruiz',
+          'email': 'carla@x.com',
+          'rol_nombre': 'Coordinador',
+        },
       ],
     });
-  }
-
-  @override
-  Future<List<AdminCliente>> owners({
-    required int projectId,
-    required String propertyNumber,
-  }) async {
-    _throwIfFailing('owners');
-    if (projectId != 1 || propertyNumber != '101') return const [];
-    return [
-      AdminCliente.fromJson({
-        'id_persona': 7,
-        'nombre': 'Alex Hernández',
-        'email': 'alex@x.com',
-      }),
-    ];
   }
 
   @override

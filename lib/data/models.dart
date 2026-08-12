@@ -1468,26 +1468,76 @@ class EstadoCuenta {
       totalPagos = asDouble(j['total_pagos']);
 }
 
-// ─── admin-clientes (selector de impersonación, solo web) ────────────────────
+// ─── admin-agentes (selector "Ver como agente") ──────────────────────────────
 
-class AdminCliente {
+/// Rol de agente que puede entrar al Portal de Agentes. Los ids son los de
+/// `roles.id` y el gate del backend (`_shared/agente.ts`) usa los mismos.
+enum RolAgente {
+  /// El aliado externo (`roles.id` 3).
+  inmobiliario(3, 'Agente Inmobiliario'),
+
+  /// El de SOZU (`roles.id` 9).
+  interno(9, 'Agente Interno');
+
+  const RolAgente(this.id, this.label);
+
+  final int id;
+
+  /// Nombre para la UI. No viene del backend: el `rol_nombre` de la BD sirve de
+  /// respaldo cuando el id no corresponde a ninguno de estos dos.
+  final String label;
+
+  static RolAgente? desdeId(int? id) {
+    for (final r in values) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+}
+
+/// Agente impersonable por un administrador.
+class AdminAgente {
   final int idPersona;
   final String nombre;
   final String? email;
 
-  AdminCliente.fromJson(Map<String, dynamic> j)
+  /// `roles.id` del agente; null si el backend no lo manda.
+  final int? rolId;
+
+  /// Nombre del rol tal como lo guarda la BD. Se usa solo si [rol] es null.
+  final String? rolNombre;
+
+  AdminAgente.fromJson(Map<String, dynamic> j)
     : idPersona = asInt(j['id_persona']),
-      nombre = asString(j['nombre'], 'Cliente'),
-      email = j['email'] as String?;
+      nombre = asString(j['nombre'], 'Agente'),
+      email = j['email'] as String?,
+      rolId = asIntOrNull(j['rol_id']),
+      rolNombre = asStringOrNull(j['rol_nombre']);
+
+  const AdminAgente({
+    required this.idPersona,
+    required this.nombre,
+    this.email,
+    this.rolId,
+    this.rolNombre,
+  });
+
+  /// Rol conocido, o null si el id no es 3 ni 9.
+  RolAgente? get rol => RolAgente.desdeId(rolId);
+
+  /// Etiqueta de rol para la UI, o null si no hay nada que mostrar.
+  String? get rolEtiqueta => rol?.label ?? rolNombre;
 }
 
-class AdminClientes {
-  final List<AdminCliente> clientes;
+class AdminAgentes {
+  final List<AdminAgente> agentes;
 
-  AdminClientes.fromJson(Map<String, dynamic> j)
-    : clientes = ((j['clientes'] as List?) ?? [])
-          .map((e) => AdminCliente.fromJson(Map<String, dynamic>.from(e)))
+  AdminAgentes.fromJson(Map<String, dynamic> j)
+    : agentes = ((j['agentes'] as List?) ?? [])
+          .map((e) => AdminAgente.fromJson(Map<String, dynamic>.from(e)))
           .toList();
+
+  const AdminAgentes(this.agentes);
 }
 
 // ─── cliente-expediente ──────────────────────────────────────────────────────
@@ -1721,4 +1771,3 @@ class AnalisisDocumento {
   /// Sin extracción utilizable: el cliente captura los campos a mano.
   bool get sinTexto => resultado == 'sin_texto';
 }
-

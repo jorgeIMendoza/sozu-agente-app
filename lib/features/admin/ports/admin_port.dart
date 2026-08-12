@@ -1,21 +1,14 @@
 import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
-/// Operaciones del acceso administrador del app (permiso de rol
-/// `administrar_app_clientes`): selector de clientes y avisos.
+/// Operaciones del acceso administrador del app (rol con `roles.apps` que
+/// administra `agentes`): selector "Ver como agente" y avisos.
 ///
 /// Nunca impersona: actua siempre con la identidad del administrador.
 /// Todos los metodos lanzan [ApiError].
 abstract interface class AdminPort {
-  /// Clientes disponibles para el selector de impersonacion.
-  Future<AdminClientes> clients();
-
-  /// Duenos y copropietarios de una unidad, para el filtro "Ver como".
-  /// Lista vacia si el backend todavia no soporta la consulta.
-  Future<List<AdminCliente>> owners({
-    required int projectId,
-    required String propertyNumber,
-  });
+  /// Agentes impersonables (roles 3 y 9), con su rol para poder filtrarlos.
+  Future<AdminAgentes> agentes();
 
   /// Proyectos activos comercializados por SOZU.
   Future<List<CatalogoItem>> projectCatalog();
