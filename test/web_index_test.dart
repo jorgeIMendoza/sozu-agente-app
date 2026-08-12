@@ -48,7 +48,7 @@ void main() {
     ]) {
       expect(html, contains(tag), reason: 'falta $tag');
     }
-    expect(html, contains('https://agentes.sozu.com/og-image.jpg'));
+    expect(html, contains('https://agentes-v2.sozu.com/og-image.jpg'));
     expect(File('web/og-image.jpg').existsSync(), isTrue);
   });
 
