@@ -11,12 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # El notify de PROD necesita HEAD^1 (tip anterior de main) para
-          # listar a TODOS los autores de PRs del release; depth 1 lo rompe.
-          fetch-depth: 2
-          # Los tags son la fuente de verdad del versionName (ver paso
-          # "Resolver versionName desde tags"). Sin esto el checkout no los baja.
-          fetch-tags: true
+          # Historial completo, por dos motivos:
+          #   · El notify de PROD necesita HEAD^1 (tip anterior de main) para
+          #     listar a TODOS los autores de PRs del release; depth 1 lo rompe.
+          #   · Los tags (que crea Codemagic al publicar) son la fuente de verdad
+          #     del versionName. Con un clon shallow, `fetch-tags` solo trae los
+          #     que caen dentro de esa profundidad, así que los vX.Y.Z de commits
+          #     viejos no llegaban y el paso "Resolver versionName desde tags"
+          #     publicaba el piso del pubspec en lugar de la versión vigente.
+          fetch-depth: 0
 
       - uses: subosito/flutter-action@v2
         with:
