@@ -2,117 +2,68 @@ import 'package:flutter/material.dart';
 import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// Ancho del campo Unidad en la fila de escritorio. No es un token de
-/// espaciado: es el ancho de un control de 3-4 dígitos, y dejarlo `Expanded`
-/// le robaba la mitad del ancho al nombre del proyecto.
-const double _unitFieldWidth = 150;
-
-/// Filtros "Ver como" del selector de super admin: Proyecto + Unidad.
+/// Filtro por rol del selector "Ver como agente": Todos · Agente Inmobiliario ·
+/// Agente Interno.
 ///
-/// Componente **tonto**: recibe el catálogo de proyectos y los valores actuales,
-/// y avisa por callbacks. No lee providers.
+/// Componente **tonto**: recibe el rol activo y el conteo por rol, y avisa por
+/// callback. No lee providers.
 ///
-/// **Proyecto se busca escribiendo, no se despliega.** Antes era un
-/// `DropdownButtonFormField` que volcaba el catálogo entero: veinte entradas
-/// -varias con nombres que no son proyectos inmobiliarios, ver nota abajo- en un
-/// menú donde había que cazar la correcta. Ahora se escriben dos letras y se
-/// filtra. Ver [SAutocompleteField].
+/// Es excluyente (un solo rol activo) y `null` significa "Todos": los dos roles
+/// son los ÚNICOS que entran al portal, así que "Todos" no es un tercer rol,
+/// es la ausencia de filtro. Ver `PortalAccess.allows`.
 ///
-/// Responsive: en teléfono los dos campos se apilan. En `Row` con la Unidad fija
-/// en 150 px, a 360 px de ancho el nombre del proyecto se truncaba siempre.
-///
-/// ---
-///
-/// **Nota sobre el catálogo:** los proyectos vienen de la edge function
-/// `admin-avisos-app` (action `catalogos`), que es el catálogo de **avisos** - no
-/// está acotado a proyectos inmobiliarios, así que trae entradas como "Productos"
-/// o "Mutuo Vive" que no aplican a "Ver como". Este componente NO las filtra por
-/// nombre a propósito: una lista negra hardcodeada se desincroniza en cuanto
-/// alguien agrega una entrada nueva y esconde el problema real, que es de datos.
-/// Solicitud de cambio en `Ejecuciones_manuales/`.
-class ClientFilters extends StatelessWidget {
-  const ClientFilters({
+/// Reemplazó a los filtros Proyecto + Unidad que venían portados del selector
+/// de clientes: un agente no cuelga de una unidad, así que ese par no acotaba
+/// nada aquí.
+class AgenteRoleFilter extends StatelessWidget {
+  const AgenteRoleFilter({
     super.key,
-    required this.projects,
-    required this.projectId,
-    required this.onProjectChanged,
-    required this.unitController,
-    required this.onUnitChanged,
-    required this.onUnitCleared,
+    required this.rol,
+    required this.onRolChanged,
+    this.conteos = const {},
+    this.total,
   });
 
-  final List<CatalogoItem> projects;
-  final int? projectId;
-  final ValueChanged<int?> onProjectChanged;
+  /// Rol activo; null = sin filtro.
+  final RolAgente? rol;
 
-  final TextEditingController unitController;
-  final ValueChanged<String> onUnitChanged;
-  final VoidCallback onUnitCleared;
+  final ValueChanged<RolAgente?> onRolChanged;
+
+  /// Cuántos agentes hay por rol, para anotar cada pastilla. Vacío mientras
+  /// carga: la pastilla sale sin número en vez de con un cero que miente.
+  final Map<RolAgente, int> conteos;
+
+  /// Total de agentes, para la pastilla "Todos".
+  final int? total;
+
+  String _label(String base, int? n) => n == null ? base : '$base ($n)';
 
   @override
   Widget build(BuildContext context) {
     final t = context.s;
-    final isStacked = context.bp.isMobile;
-
-    CatalogoItem? selected;
-    for (final p in projects) {
-      if (p.id == projectId) {
-        selected = p;
-        break;
-      }
-    }
-
-    // Sin icono: el campo ya dice "Proyecto" y al escribir salen los proyectos.
-    // Un icono de edificio no agrega informacion y roba ancho al nombre.
-    final projectField = SAutocompleteField<CatalogoItem>(
-      options: projects,
-      value: selected,
-      labelOf: (p) => p.nombre,
-      labelText: 'Proyecto',
-      hintText: 'Margot, Bottura, Daiku...',
-      noResultsLabel: 'Ningún proyecto coincide con',
-      enabled: projects.isNotEmpty,
-      onSelected: (p) => onProjectChanged(p?.id),
-    );
-
-    final unitField = ValueListenableBuilder<TextEditingValue>(
-      valueListenable: unitController,
-      builder: (context, value, _) => STextField(
-        controller: unitController,
-        onChanged: onUnitChanged,
-        keyboardType: TextInputType.number,
-        label: 'Unidad',
-        hint: '101',
-        prefixIcon: Icons.home_outlined,
-        size: STextFieldSize.md,
-        suffix: value.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                color: t.color.fgSubtle,
-                tooltip: 'Limpiar unidad',
-                onPressed: onUnitCleared,
-              ),
-      ),
-    );
-
-    if (isStacked) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          projectField,
-          SizedBox(height: t.space.xs),
-          unitField,
-        ],
-      );
-    }
-
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: projectField),
-        SizedBox(width: t.space.xs),
-        SizedBox(width: _unitFieldWidth, child: unitField),
+        const SFieldLabel('Rol'),
+        Wrap(
+          spacing: t.space.xs,
+          runSpacing: t.space.xs,
+          children: [
+            SChoiceChip(
+              label: _label('Todos', total),
+              selected: rol == null,
+              size: SChoiceChipSize.sm,
+              onSelected: (_) => onRolChanged(null),
+            ),
+            for (final r in RolAgente.values)
+              SChoiceChip(
+                label: _label(r.label, conteos[r]),
+                selected: rol == r,
+                size: SChoiceChipSize.sm,
+                onSelected: (_) => onRolChanged(r),
+              ),
+          ],
+        ),
       ],
     );
   }

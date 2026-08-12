@@ -9,22 +9,9 @@ import 'package:sozu_agente_app/features/admin/ports/admin_port.dart';
 /// (`overrideWithValue`), así que main.dart no necesita wiring propio.
 final adminPortProvider = Provider<AdminPort>((ref) => AdminAdapter());
 
-/// Clientes para el selector de impersonación (no depende del target).
-final adminClientsProvider = FutureProvider<AdminClientes>(
-  (ref) => ref.watch(adminPortProvider).clients(),
+/// Agentes impersonables para el selector "Ver como agente". La lista llega
+/// completa y el filtrado (rol + búsqueda) es local: son decenas de agentes,
+/// no los miles de clientes del otro portal.
+final adminAgentesProvider = FutureProvider<AdminAgentes>(
+  (ref) => ref.watch(adminPortProvider).agentes(),
 );
-
-/// Proyectos SOZU para el filtro "Ver como" del selector de impersonación
-/// (mismo catálogo que los avisos: proyectos activos comercializados).
-final adminProjectsProvider = FutureProvider<List<CatalogoItem>>(
-  (ref) => ref.watch(adminPortProvider).projectCatalog(),
-);
-
-/// Dueños/copropietarios de una unidad (proyecto + número de propiedad) para
-/// el filtro "Ver como". Key = record (projectId, propertyNumber).
-final adminOwnersProvider = FutureProvider.autoDispose
-    .family<List<AdminCliente>, ({int projectId, String propertyNumber})>(
-      (ref, q) => ref
-          .watch(adminPortProvider)
-          .owners(projectId: q.projectId, propertyNumber: q.propertyNumber),
-    );

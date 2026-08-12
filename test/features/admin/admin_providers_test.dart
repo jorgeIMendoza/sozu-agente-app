@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/features/admin/providers/admin_providers.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
@@ -17,41 +18,29 @@ void main() {
     return container;
   }
 
-  test('adminClientsProvider resuelve la lista del puerto', () async {
+  test('adminAgentesProvider resuelve la lista del puerto', () async {
     final port = FakeAdminPort();
     final container = makeContainer(port);
 
-    final data = await container.read(adminClientsProvider.future);
+    final data = await container.read(adminAgentesProvider.future);
 
-    expect(data.clientes, hasLength(2));
-    expect(data.clientes.first.nombre, 'Alex Hernández');
-    expect(port.log, ['clients']);
+    expect(data.agentes, hasLength(3));
+    expect(data.agentes.first.nombre, 'Alex Hernández');
+    expect(port.log, ['agentes']);
   });
 
-  test('adminProjectsProvider resuelve el catálogo del puerto', () async {
+  test('el rol llega tipado y el desconocido queda en null', () async {
     final port = FakeAdminPort();
     final container = makeContainer(port);
 
-    final projects = await container.read(adminProjectsProvider.future);
+    final agentes = (await container.read(adminAgentesProvider.future)).agentes;
 
-    expect(projects.map((p) => p.nombre), ['Toreo', 'Reforma']);
-    expect(port.log, ['projectCatalog']);
-  });
-
-  test('adminOwnersProvider pasa proyecto y unidad al puerto', () async {
-    final port = FakeAdminPort();
-    final container = makeContainer(port);
-
-    final owners = await container.read(
-      adminOwnersProvider((projectId: 1, propertyNumber: '101')).future,
-    );
-    final empty = await container.read(
-      adminOwnersProvider((projectId: 2, propertyNumber: '999')).future,
-    );
-
-    expect(owners.single.idPersona, 7);
-    expect(empty, isEmpty);
-    expect(port.log, ['owners', 'owners']);
+    expect(agentes[0].rol, RolAgente.inmobiliario);
+    expect(agentes[1].rol, RolAgente.interno);
+    // Un rol que no es 3 ni 9 no se inventa: `rol` es null y la UI cae en el
+    // nombre que manda la BD para no dejar la fila sin insignia.
+    expect(agentes[2].rol, isNull);
+    expect(agentes[2].rolEtiqueta, 'Coordinador');
   });
 
   test('un fallo del puerto sale como ApiError por el provider', () async {
@@ -59,7 +48,7 @@ void main() {
     final container = makeContainer(port);
 
     await expectLater(
-      container.read(adminClientsProvider.future),
+      container.read(adminAgentesProvider.future),
       throwsA(isA<ApiError>().having((e) => e.code, 'code', 'forbidden_role')),
     );
   });

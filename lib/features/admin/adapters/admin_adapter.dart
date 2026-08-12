@@ -5,7 +5,7 @@ import 'package:sozu_agente_app/features/admin/ports/admin_port.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
 /// Implementacion actual de [AdminPort] sobre Supabase (edge functions
-/// admin-clientes y admin-avisos-app): la unica frontera de la feature donde
+/// admin-agentes y admin-avisos-app): la unica frontera de la feature donde
 /// se conocen sus tipos. Si el backend cambia, se reescribe este archivo y
 /// nada mas.
 class AdminAdapter implements AdminPort {
@@ -45,28 +45,8 @@ class AdminAdapter implements AdminPort {
           .toList();
 
   @override
-  Future<AdminClientes> clients() async =>
-      AdminClientes.fromJson(await _invoke('admin-agentes'));
-
-  /// Con un backend sin action=propietarios la respuesta trae {clientes} y
-  /// esto devuelve lista vacia (degrada sin romperse), como pide el puerto.
-  @override
-  Future<List<AdminCliente>> owners({
-    required int projectId,
-    required String propertyNumber,
-  }) async {
-    final res = await _invoke(
-      'admin-agentes',
-      body: {
-        'action': 'propietarios',
-        'id_proyecto': projectId,
-        'numero_propiedad': propertyNumber,
-      },
-    );
-    return ((res['propietarios'] as List?) ?? [])
-        .map((e) => AdminCliente.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-  }
+  Future<AdminAgentes> agentes() async =>
+      AdminAgentes.fromJson(await _invoke('admin-agentes'));
 
   @override
   Future<List<CatalogoItem>> projectCatalog() async => _catalog(
