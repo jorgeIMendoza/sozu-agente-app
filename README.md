@@ -117,7 +117,7 @@ Este repo nace de `sozu-cliente-app`, así que hereda su CI ya cableado.
 | Secrets de Edge Functions: `PORTAL_WEB_URL`, `MIFIEL_ENVIRONMENT` | Supabase → Edge Functions → Secrets | los links digitales apuntan al host equivocado y la firma Mifiel cancela documentos creados desde la web |
 | Trigger de despacho de push para `notificaciones_agente` | repos `sozu-supabase-migrations` + `sozu-edge-functions` | una notificación insertada para un agente se guarda pero no se empuja: `notificaciones-push` hoy solo entiende las tablas del cliente |
 | App en Play Console y en App Store Connect | consolas de tienda | los pipelines de publicación no tienen a dónde subir |
-| Dominio `agentes.sozu.com` apuntado al site, y su Redirect URL `https://agentes.sozu.com/auth/confirmacion-email` | Firebase Hosting + Supabase Auth → URL Configuration | el enlace de recuperar contraseña no canjea el token |
+| Dominio `agentes-v2.sozu.com` apuntado al site, y su Redirect URL `https://agentes-v2.sozu.com/auth/confirmacion-email` | Firebase Hosting + Supabase Auth → URL Configuration | el enlace de recuperar contraseña no canjea el token |
 
 **Limitación conocida del acceso:** el "olvidé mi contraseña" self-service exige
 `roles.requiere_confirmacion_email = true`, y el rol 9 (Agente Interno) lo tiene
