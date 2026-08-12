@@ -1,0 +1,35 @@
+# Worker `obtener-agentes-app.sozu.com`: redirector de descarga de la app.
+#
+# Existe para que el worker se despliegue DESDE EL REPO y no pegándolo a mano en
+# el dashboard. El de clientes (`app-sozu-clientes`) vive solo en Cloudflare: no
+# hay copia ni historial de a dónde apuntaba, y si alguien lo edita o lo borra no
+# queda rastro. Este no repite ese error.
+#
+# Deploy automático: .github/workflows/deploy-worker-cloudflare.yml, al hacer push
+# a `main` cuando cambia el worker o este archivo.
+#
+# Deploy a mano desde esta carpeta:
+#   npx wrangler deploy --config tool/cloudflare/wrangler.toml
+# (requiere `npx wrangler login`, que abre el navegador, o CLOUDFLARE_API_TOKEN)
+
+name = "app-sozu-agentes"
+main = "../cloudflare-worker-obtener-agentes-app.js"
+
+# El id de cuenta NO es un secreto: sale en la URL del dashboard. El secreto es
+# el API token, que vive en los secrets del repo.
+account_id = "bece0694e6cbfaa9fa8f7e599b5467ce"
+
+# Fija el comportamiento del runtime. Subirla es un cambio deliberado, no algo
+# que deba moverse solo: una fecha nueva puede cambiar semántica del runtime.
+compatibility_date = "2026-08-11"
+
+# El dominio queda declarado aquí, así que un deploy nunca lo desconecta. La zona
+# sozu.com ya está en esta cuenta, así que Cloudflare crea el DNS solo.
+[[routes]]
+pattern = "obtener-agentes-app.sozu.com"
+custom_domain = true
+
+# Sin observabilidad no hay forma de saber si el redirector se rompió: nadie
+# reporta un QR que no abre, simplemente no instalan la app.
+[observability]
+enabled = true

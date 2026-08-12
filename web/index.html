@@ -84,10 +84,14 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/Icon-192.png">
 
-  <!-- Favicons dinámicos (modo claro/oscuro), mismo patrón que sozu-admin -->
-  <link rel="icon" type="image/png" href="favicon-light.png" media="(prefers-color-scheme: light)">
-  <link rel="icon" type="image/png" href="favicon-dark.png" media="(prefers-color-scheme: dark)">
-  <link rel="icon" type="image/png" href="favicon-light.png">
+  <!-- Favicon del portal de AGENTES. El ícono trae su propio fondo gris, así que
+       NO necesita variante por tema: el portal del cliente usa dos archivos
+       (claro/oscuro) porque su logo es el pin monocromo y se pierde contra el
+       fondo del navegador; aquí ese problema no existe.
+       Dos tamaños para que la pestaña no reescale un 512 a 16 px: Chrome elige el
+       de 32 y lo demás (marcadores, atajos) usa el grande. -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
 
   <link rel="manifest" href="manifest.json">
 
