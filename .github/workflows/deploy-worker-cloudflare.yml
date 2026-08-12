@@ -31,6 +31,27 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy --config tool/cloudflare/wrangler.toml
 
+      # La PRIMERA vez, el dominio personalizado se acaba de crear: el DNS tarda
+      # en propagarse y el certificado en emitirse. Sin esta espera, el deploy
+      # sale bien y la verificación falla igual, que es la peor combinación —
+      # se lee como "el worker está roto" cuando solo faltaban segundos.
+      - name: Esperar a que el dominio responda
+        run: |
+          URL='https://obtener-agentes-app.sozu.com'
+          for i in $(seq 1 20); do
+            CODIGO=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)
+            if [ "$CODIGO" != "000" ]; then
+              echo "Responde tras ${i} intento(s) (HTTP $CODIGO)."
+              exit 0
+            fi
+            echo "Intento $i: el dominio todavía no resuelve. Esperando 15 s…"
+            sleep 15
+          done
+          echo "ERROR: el dominio no respondió en ~5 min."
+          echo "Si el worker sí se desplegó, revisa que el token tenga permiso de"
+          echo "DNS:Edit sobre la zona sozu.com — el dominio personalizado lo necesita."
+          exit 1
+
       # Un redirector roto no lo reporta nadie: simplemente no instalan la app.
       # Se comprueban los tres caminos que el worker distingue por User-Agent.
       - name: Verificar los tres caminos
