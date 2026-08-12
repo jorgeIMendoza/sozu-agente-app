@@ -69,60 +69,109 @@ jobs:
           # step ya corre con -e, así que un curl que falla (DNS, timeout) mataba
           # el step con "exit code 6" y sin una sola línea que dijera qué pasó.
           # Aquí un fallo de red se convierte en código 000 y en un mensaje.
-          FALLOS=0
+          #
           # El `|| c=000` es una ASIGNACIÓN, no un `echo`: curl ya escribe 000
           # cuando falla, así que un `|| echo 000` concatena y produce "000000".
           # Ese fue el bug que se saltó la espera del primer deploy y dejó el
           # step muriendo con "exit code 6" sin explicar nada.
+          #
+          # El `?cb=` es un rompe-cachés: el worker ignora la query, pero sin él
+          # una respuesta guardada en el edge puede ser la del worker ANTERIOR y
+          # el check mide un despliegue que ya no existe.
+          FALLOS=0
           codigo() {
             local c
-            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H "User-Agent: $1" "$URL") || c=000
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H "User-Agent: $1" "$URL?cb=$CB") || c=000
             echo "${c:-000}"
           }
-          destino() { curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 -H "User-Agent: $1" "$URL" || true; }
+          destino() { curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 -H "User-Agent: $1" "$URL?cb=$CB" || true; }
+          cuerpo() { curl -s --max-time 20 -H "User-Agent: $1" "$URL?cb=$CB" | head -c 2000 || true; }
 
-          # Android: siempre a Play, y con el package de AGENTES. Que apunte al de
-          # clientes es el error más fácil de cometer y el más difícil de notar.
-          CODIGO=$(codigo "$UA_ANDROID"); DESTINO=$(destino "$UA_ANDROID")
-          echo "Android    -> $CODIGO $DESTINO"
-          case "$CODIGO" in
-            000) echo "  ERROR: no se pudo alcanzar el dominio."; FALLOS=$((FALLOS+1)) ;;
-            30*) case "$DESTINO" in
-                   *play.google.com*id=com.sozu.agentes_app*) echo "  OK: manda a la app de agentes en Play." ;;
-                   *) echo "  ERROR: destino inesperado. ¿El package quedó el de clientes?"; FALLOS=$((FALLOS+1)) ;;
-                 esac ;;
-            *) echo "  ERROR: se esperaba redirección, llegó $CODIGO"; FALLOS=$((FALLOS+1)) ;;
-          esac
+          # La comprobación va en una función porque se REINTENTA: el paso anterior
+          # espera a que el dominio responda, no a que responda el worker NUEVO, y
+          # entre PoPs de Cloudflare eso no es instantáneo. Sin reintento, un deploy
+          # correcto se reporta rojo por haber medido demasiado pronto.
+          verificar() {
+            FALLOS=0
 
-          # iOS: mientras no haya ficha, página de "Próximamente" (200). Cuando se
-          # publique, redirección a App Store. Cualquiera de las dos es válida; lo
-          # que NO se acepta es mandar a una ficha que no existe.
-          CODIGO=$(codigo "$UA_IPHONE"); DESTINO=$(destino "$UA_IPHONE")
-          CUERPO=$(curl -s --max-time 20 -H "User-Agent: $UA_IPHONE" "$URL" | head -c 2000 || true)
-          echo "iPhone     -> $CODIGO ${DESTINO:-(html)}"
-          if [ "$CODIGO" = "200" ]; then
-            if echo "$CUERPO" | grep -qi 'Pr.ximamente'; then
-              echo "  OK: página de Próximamente (iOS sin ficha todavía)."
-            else
-              echo "  ERROR: 200 sin la página de Próximamente."; FALLOS=$((FALLOS+1))
-            fi
-          else
-            case "$DESTINO" in
-              *apps.apple.com*id[0-9]*) echo "  OK: manda a la ficha de App Store." ;;
-              *) echo "  ERROR: iOS sin página ni ficha válida ($CODIGO $DESTINO)"; FALLOS=$((FALLOS+1)) ;;
+            # Android: los mismos dos estados válidos que iOS, porque el listing de
+            # Play tampoco es público todavía. Con ANDROID_DISPONIBLE en false,
+            # página de "Próximamente" (200); en true, redirección a Play, y ahí el
+            # package tiene que ser el de AGENTES: que apunte al de clientes es el
+            # error más fácil de cometer y el más difícil de notar.
+            #
+            # Antes se exigía la redirección SIEMPRE, y por eso el deploy que
+            # introdujo la bandera salió rojo mientras el worker hacía justo lo que
+            # se le pidió. Redirigir a una ficha inexistente es precisamente el bug
+            # que se está evitando: Play responde 404 y su app lo muestra como
+            # "Elemento no encontrado", o sea un QR que parece muerto.
+            CODIGO=$(codigo "$UA_ANDROID"); DESTINO=$(destino "$UA_ANDROID")
+            CUERPO=$(cuerpo "$UA_ANDROID")
+            echo "Android    -> $CODIGO ${DESTINO:-(html)}"
+            case "$CODIGO" in
+              000) echo "  ERROR: no se pudo alcanzar el dominio."; FALLOS=$((FALLOS+1)) ;;
+              200) if echo "$CUERPO" | grep -qi 'Pr.ximamente'; then
+                     echo "  OK: página de Próximamente (Android sin ficha todavía)."
+                   else
+                     echo "  ERROR: 200 sin la página de Próximamente."; FALLOS=$((FALLOS+1))
+                   fi ;;
+              30*) case "$DESTINO" in
+                     *play.google.com*id=com.sozu.agentes_app*) echo "  OK: manda a la app de agentes en Play." ;;
+                     *) echo "  ERROR: destino inesperado. ¿El package quedó el de clientes?"; FALLOS=$((FALLOS+1)) ;;
+                   esac ;;
+              *) echo "  ERROR: ni página ni redirección, llegó $CODIGO"; FALLOS=$((FALLOS+1)) ;;
             esac
-          fi
 
-          # Escritorio: la landing con los dos botones.
-          CODIGO=$(codigo "$UA_PC")
-          echo "Escritorio -> $CODIGO"
-          if [ "$CODIGO" = "200" ]; then
-            echo "  OK: landing de escritorio."
-          else
-            echo "  ERROR: la landing no responde 200."; FALLOS=$((FALLOS+1))
-          fi
+            # iOS: mientras no haya ficha, página de "Próximamente" (200). Cuando se
+            # publique, redirección a App Store. Cualquiera de las dos es válida; lo
+            # que NO se acepta es mandar a una ficha que no existe.
+            CODIGO=$(codigo "$UA_IPHONE"); DESTINO=$(destino "$UA_IPHONE")
+            CUERPO=$(cuerpo "$UA_IPHONE")
+            echo "iPhone     -> $CODIGO ${DESTINO:-(html)}"
+            if [ "$CODIGO" = "200" ]; then
+              if echo "$CUERPO" | grep -qi 'Pr.ximamente'; then
+                echo "  OK: página de Próximamente (iOS sin ficha todavía)."
+              else
+                echo "  ERROR: 200 sin la página de Próximamente."; FALLOS=$((FALLOS+1))
+              fi
+            else
+              case "$DESTINO" in
+                *apps.apple.com*id[0-9]*) echo "  OK: manda a la ficha de App Store." ;;
+                *) echo "  ERROR: iOS sin página ni ficha válida ($CODIGO $DESTINO)"; FALLOS=$((FALLOS+1)) ;;
+              esac
+            fi
 
-          # Se reportan los TRES y luego se falla: si solo el de iOS está mal, hay
-          # que saber que Android y escritorio sí quedaron, no quedarse en el
-          # primer error y volver a desplegar a ciegas.
-          [ "$FALLOS" -eq 0 ] && echo "OK: los tres caminos responden como deben." || { echo "$FALLOS camino(s) mal."; exit 1; }
+            # Escritorio: la landing con los dos botones.
+            CODIGO=$(codigo "$UA_PC")
+            echo "Escritorio -> $CODIGO"
+            if [ "$CODIGO" = "200" ]; then
+              echo "  OK: landing de escritorio."
+            else
+              echo "  ERROR: la landing no responde 200."; FALLOS=$((FALLOS+1))
+            fi
+
+            # Se reportan los TRES y luego se decide: si solo el de iOS está mal,
+            # hay que saber que Android y escritorio sí quedaron, no quedarse en el
+            # primer error y volver a desplegar a ciegas.
+            return "$FALLOS"
+          }
+
+          # 4 intentos separados 20 s: cubre la propagación sin esconder un fallo
+          # real, que a los ~80 s sigue ahí. El `if` y no un `&&`: en el último
+          # intento un `&&` con la condición falsa devuelve 1 y, con el shell en
+          # -e, mata el step antes del mensaje final. Justo lo que este archivo
+          # lleva dos arreglos evitando.
+          for INTENTO in 1 2 3 4; do
+            CB="$GITHUB_RUN_ID-$INTENTO"
+            echo "--- intento $INTENTO ---"
+            if verificar; then
+              echo "OK: los tres caminos responden como deben."
+              exit 0
+            fi
+            if [ "$INTENTO" -lt 4 ]; then
+              echo "$FALLOS camino(s) mal; reintento en 20 s."
+              sleep 20
+            fi
+          done
+          echo "$FALLOS camino(s) mal tras 4 intentos."
+          exit 1
