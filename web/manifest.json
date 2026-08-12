@@ -1,11 +1,11 @@
 {
     "name": "SOZU • Portal del Agente",
-    "short_name": "SOZU",
+    "short_name": "SOZU Agentes",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0B0B0B",
     "theme_color": "#0B0B0B",
-    "description": "Portal del cliente SOZU",
+    "description": "Portal del agente SOZU: inventario, prospectos, negocios y comisiones.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
