@@ -66,7 +66,7 @@ const PAGINA_IOS = `
      Gracias por tu paciencia.</p>
   <p style="opacity:.5;font-size:.85rem">Si tienes un dispositivo Android,
      la app ya está disponible en Google Play. Y desde el navegador puedes entrar
-     en agentes.sozu.com.</p>
+     en agentes-v2.sozu.com.</p>
 `;
 
 const PAGINA_ESCRITORIO = `
@@ -79,7 +79,7 @@ const PAGINA_ESCRITORIO = `
       : `<span class="btn off">App Store · Próximamente</span>`
   }
   <p style="opacity:.5;font-size:.85rem">También puedes trabajar desde el
-     navegador en <a href="https://agentes.sozu.com">agentes.sozu.com</a>.</p>
+     navegador en <a href="https://agentes-v2.sozu.com">agentes-v2.sozu.com</a>.</p>
 `;
 
 export default {

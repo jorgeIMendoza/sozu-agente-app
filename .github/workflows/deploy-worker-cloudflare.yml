@@ -39,11 +39,15 @@ jobs:
         run: |
           URL='https://obtener-agentes-app.sozu.com'
           for i in $(seq 1 20); do
-            CODIGO=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)
-            if [ "$CODIGO" != "000" ]; then
-              echo "Responde tras ${i} intento(s) (HTTP $CODIGO)."
-              exit 0
-            fi
+            # `|| CODIGO=000` con ASIGNACIÓN, no `|| echo 000`: curl YA imprime
+            # 000 cuando falla, así que el echo concatenaba y salía "000000" —
+            # distinto de "000", la comparación daba por bueno el fallo y esta
+            # espera se saltaba sola. Fue exactamente el bug del primer deploy.
+            CODIGO=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL") || CODIGO=000
+            case "$CODIGO" in
+              000|'') ;;
+              *) echo "Responde tras ${i} intento(s) (HTTP $CODIGO)."; exit 0 ;;
+            esac
             echo "Intento $i: el dominio todavía no resuelve. Esperando 15 s…"
             sleep 15
           done
@@ -56,42 +60,69 @@ jobs:
       # Se comprueban los tres caminos que el worker distingue por User-Agent.
       - name: Verificar los tres caminos
         run: |
-          set -e
           URL='https://obtener-agentes-app.sozu.com'
           UA_ANDROID='Mozilla/5.0 (Linux; Android 14) Mobile'
           UA_IPHONE='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile'
           UA_PC='Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 
+          # SIN `set -e` a propósito, y cada curl con `|| VAR=...`: el shell del
+          # step ya corre con -e, así que un curl que falla (DNS, timeout) mataba
+          # el step con "exit code 6" y sin una sola línea que dijera qué pasó.
+          # Aquí un fallo de red se convierte en código 000 y en un mensaje.
+          FALLOS=0
+          # El `|| c=000` es una ASIGNACIÓN, no un `echo`: curl ya escribe 000
+          # cuando falla, así que un `|| echo 000` concatena y produce "000000".
+          # Ese fue el bug que se saltó la espera del primer deploy y dejó el
+          # step muriendo con "exit code 6" sin explicar nada.
+          codigo() {
+            local c
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H "User-Agent: $1" "$URL") || c=000
+            echo "${c:-000}"
+          }
+          destino() { curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 -H "User-Agent: $1" "$URL" || true; }
+
           # Android: siempre a Play, y con el package de AGENTES. Que apunte al de
           # clientes es el error más fácil de cometer y el más difícil de notar.
-          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_ANDROID" "$URL")
-          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' -H "User-Agent: $UA_ANDROID" "$URL")
-          echo "Android  -> $CODIGO $DESTINO"
-          case "$CODIGO" in 30*) ;; *) echo "ERROR: se esperaba redirección, llegó $CODIGO"; exit 1 ;; esac
-          case "$DESTINO" in
-            *play.google.com*id=com.sozu.agentes_app*) ;;
-            *) echo "ERROR: destino inesperado. ¿El package cambió o quedó el de clientes?"; exit 1 ;;
+          CODIGO=$(codigo "$UA_ANDROID"); DESTINO=$(destino "$UA_ANDROID")
+          echo "Android    -> $CODIGO $DESTINO"
+          case "$CODIGO" in
+            000) echo "  ERROR: no se pudo alcanzar el dominio."; FALLOS=$((FALLOS+1)) ;;
+            30*) case "$DESTINO" in
+                   *play.google.com*id=com.sozu.agentes_app*) echo "  OK: manda a la app de agentes en Play." ;;
+                   *) echo "  ERROR: destino inesperado. ¿El package quedó el de clientes?"; FALLOS=$((FALLOS+1)) ;;
+                 esac ;;
+            *) echo "  ERROR: se esperaba redirección, llegó $CODIGO"; FALLOS=$((FALLOS+1)) ;;
           esac
 
           # iOS: mientras no haya ficha, página de "Próximamente" (200). Cuando se
           # publique, redirección a App Store. Cualquiera de las dos es válida; lo
           # que NO se acepta es mandar a una ficha que no existe.
-          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_IPHONE" "$URL")
-          CUERPO=$(curl -s -H "User-Agent: $UA_IPHONE" "$URL" | head -c 2000)
-          DESTINO=$(curl -s -o /dev/null -w '%{redirect_url}' -H "User-Agent: $UA_IPHONE" "$URL")
-          echo "iPhone   -> $CODIGO ${DESTINO:-(html)}"
+          CODIGO=$(codigo "$UA_IPHONE"); DESTINO=$(destino "$UA_IPHONE")
+          CUERPO=$(curl -s --max-time 20 -H "User-Agent: $UA_IPHONE" "$URL" | head -c 2000 || true)
+          echo "iPhone     -> $CODIGO ${DESTINO:-(html)}"
           if [ "$CODIGO" = "200" ]; then
-            echo "$CUERPO" | grep -qi 'Pr.ximamente' \
-              || { echo "ERROR: 200 sin la página de Próximamente."; exit 1; }
+            if echo "$CUERPO" | grep -qi 'Pr.ximamente'; then
+              echo "  OK: página de Próximamente (iOS sin ficha todavía)."
+            else
+              echo "  ERROR: 200 sin la página de Próximamente."; FALLOS=$((FALLOS+1))
+            fi
           else
             case "$DESTINO" in
-              *apps.apple.com*id[0-9]*) ;;
-              *) echo "ERROR: redirección de iOS a un destino sin id de App Store ($DESTINO)"; exit 1 ;;
+              *apps.apple.com*id[0-9]*) echo "  OK: manda a la ficha de App Store." ;;
+              *) echo "  ERROR: iOS sin página ni ficha válida ($CODIGO $DESTINO)"; FALLOS=$((FALLOS+1)) ;;
             esac
           fi
 
           # Escritorio: la landing con los dos botones.
-          CODIGO=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $UA_PC" "$URL")
+          CODIGO=$(codigo "$UA_PC")
           echo "Escritorio -> $CODIGO"
-          [ "$CODIGO" = "200" ] || { echo "ERROR: la landing de escritorio no responde 200."; exit 1; }
-          echo "OK: los tres caminos responden como deben."
+          if [ "$CODIGO" = "200" ]; then
+            echo "  OK: landing de escritorio."
+          else
+            echo "  ERROR: la landing no responde 200."; FALLOS=$((FALLOS+1))
+          fi
+
+          # Se reportan los TRES y luego se falla: si solo el de iOS está mal, hay
+          # que saber que Android y escritorio sí quedaron, no quedarse en el
+          # primer error y volver a desplegar a ciegas.
+          [ "$FALLOS" -eq 0 ] && echo "OK: los tres caminos responden como deben." || { echo "$FALLOS camino(s) mal."; exit 1; }
