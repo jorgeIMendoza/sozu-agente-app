@@ -224,7 +224,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slidePage(
           context,
           state,
-          const SelectClientScreen(),
+          const SelectAgenteScreen(),
           sinMarco: true,
         ),
       ),

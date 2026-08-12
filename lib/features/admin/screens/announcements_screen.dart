@@ -414,7 +414,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   @override
   Widget build(BuildContext context) {
     final t = context.s;
-    // Mismo layout y mismo ancho que el selector de cliente. Antes montaba su
+    // Mismo layout y mismo ancho que el selector de agente. Antes montaba su
     // propio Scaffold con AppBar, y el AppBar ocupa el ancho COMPLETO de la
     // ventana mientras el contenido va centrado: el titulo quedaba pegado al
     // borde izquierdo, sin relacion con la columna. Es el motivo por el que

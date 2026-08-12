@@ -226,7 +226,7 @@ pública de la feature, no un motivo para duplicarlo ni dejar un alias.
 pendiente en `lib/features/admin/README.md`.
 
 ```
-ports/admin_port.dart           AdminPort (12 métodos)
+ports/admin_port.dart           AdminPort (10 métodos)
 adapters/admin_adapter.dart     AdminAdapter - único con supabase_flutter
 providers/admin_providers.dart · impersonation_provider.dart
 layouts/admin_layout.dart       AdminLayout + AdminScrollArea
