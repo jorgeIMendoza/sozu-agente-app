@@ -11,14 +11,24 @@ import 'user_agent/user_agent_stub.dart'
 import 'package:sozu_agente_app/core/version.dart';
 
 /// Mediciones de uso ("Uso por portal" en Alta Dirección): registra la sesión
-/// del cliente en portal_sesiones (portal `clientes`) vía los mismos RPCs
+/// del agente en portal_sesiones (portal `agentes`) vía los mismos RPCs
 /// SECURITY DEFINER que usan los portales web (register/touch/close). Las
 /// donas del tablero clasifican el user_agent: en web se manda el real del
 /// navegador; en móvil uno sintético con marca/modelo reales del dispositivo.
 class PortalTracking {
   PortalTracking._();
 
-  static const _portal = 'clientes';
+  /// Portal con el que se registra la sesión en `portal_sesiones`.
+  ///
+  /// `agentes`, NO `clientes`: este archivo llegó copiado del app del cliente y
+  /// registraba las sesiones del agente dentro del portal de clientes,
+  /// inflando sus donas con usuarios que no eran suyos. Público para que el
+  /// test lo fije.
+  static const portal = 'agentes';
+
+  /// Token del user_agent sintético que el clasificador SQL del tablero mira
+  /// para contar el acceso como "App agentes". Si cambia aquí, cambia allá.
+  static const appToken = 'SozuAgenteApp';
   static const _heartbeatCada = Duration(minutes: 5);
 
   static String? _sessionId;
@@ -28,7 +38,8 @@ class PortalTracking {
   static SupabaseClient get _sb => Supabase.instance.client;
 
   /// Abre (o reutiliza) la sesión de medición. Llamar cuando hay sesión de un
-  /// Cliente real (no impersonación de admin).
+  /// agente real: un admin no pasa `PortalAccess.allows`, así que su
+  /// impersonación no cuenta como uso del portal.
   static Future<void> iniciar() async {
     if (_sessionId != null || _iniciando) return;
     _iniciando = true;
@@ -36,7 +47,7 @@ class PortalTracking {
       final ua = await _userAgent();
       final res = await _sb.rpc(
         'register_portal_session',
-        params: {'p_portal': _portal, 'p_user_agent': ua},
+        params: {'p_portal': portal, 'p_user_agent': ua},
       );
       _sessionId = res as String?;
       _heartbeat?.cancel();
@@ -74,6 +85,9 @@ class PortalTracking {
 
   /// UA para clasificar en las donas: real en web; sintético (pero con los
   /// tokens que el clasificador espera: Android/Mobile/modelo, iPhone) en app.
+  ///
+  /// El token [appToken] es lo que el clasificador SQL del tablero mira para
+  /// contar el acceso como "App agentes"; sin él las sesiones caen en "Otro".
   static Future<String> _userAgent() async {
     final delNavegador = userAgentDelNavegador();
     if (delNavegador != null && delNavegador.isNotEmpty) return delNavegador;
@@ -83,17 +97,17 @@ class PortalTracking {
       if (!kIsWeb && Platform.isAndroid) {
         final a = await plugin.androidInfo;
         return 'Mozilla/5.0 (Linux; Android ${a.version.release}; '
-            '${a.model}) Mobile SozuClienteApp/$appVersionBase';
+            '${a.model}) Mobile $appToken/$appVersionBase';
       }
       if (!kIsWeb && Platform.isIOS) {
         final i = await plugin.iosInfo;
         return 'Mozilla/5.0 (iPhone; CPU iPhone OS '
             '${i.systemVersion.replaceAll('.', '_')} like Mac OS X) '
-            'Mobile SozuClienteApp/$appVersionBase (${i.utsname.machine})';
+            'Mobile $appToken/$appVersionBase (${i.utsname.machine})';
       }
     } catch (_) {
       /* fallback genérico */
     }
-    return 'SozuClienteApp/$appVersionBase Mobile';
+    return '$appToken/$appVersionBase Mobile';
   }
 }
