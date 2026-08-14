@@ -976,6 +976,8 @@ class CatalogoItem {
   CatalogoItem.fromJson(Map<String, dynamic> j)
     : id = asInt(j['id']),
       nombre = asString(j['nombre'], '-');
+
+  const CatalogoItem({required this.id, required this.nombre});
 }
 
 /// Aviso enviado (o programado) desde el acceso admin a clientes del app.
@@ -1527,6 +1529,27 @@ class AdminAgente {
 
   /// Etiqueta de rol para la UI, o null si no hay nada que mostrar.
   String? get rolEtiqueta => rol?.label ?? rolNombre;
+}
+
+/// Rol como PÚBLICO de un aviso: el id que se manda al backend y cuántos
+/// agentes tiene hoy. El conteo lo calcula la misma consulta que resuelve los
+/// destinatarios, así el número de la pastilla y el del envío no discrepan.
+class RolDestino {
+  final int id;
+  final int total;
+
+  /// Nombre del rol en la BD; se usa si el id no es 3 ni 9.
+  final String? nombre;
+
+  RolDestino.fromJson(Map<String, dynamic> j)
+    : id = asInt(j['id']),
+      total = asInt(j['total']),
+      nombre = asStringOrNull(j['nombre']);
+
+  const RolDestino({required this.id, required this.total, this.nombre});
+
+  /// Etiqueta para la UI: el nombre canónico del portal, o el de la BD.
+  String get label => RolAgente.desdeId(id)?.label ?? nombre ?? 'Rol $id';
 }
 
 class AdminAgentes {
