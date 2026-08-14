@@ -21,9 +21,12 @@ import 'package:sozu_agente_app/features/admin/components/agente_filters.dart';
 ///
 /// Dos formas de acotar, y se combinan: el filtro de **rol** ([AgenteRoleFilter],
 /// Agente Inmobiliario 3 / Agente Interno 9) y el **buscador** por nombre o
-/// correo. Sin nada seleccionado se lista todo: los agentes son decenas, así que
-/// la lista completa es útil, a diferencia del selector de clientes (miles) del
-/// que esta pantalla venía portada y que exigía escribir antes de mostrar algo.
+/// correo.
+///
+/// **No hay lista hasta que se escriben 2 letras.** Son cientos de agentes (349
+/// el día que se midió), así que volcarlos obliga a desplazar una lista larguísima
+/// para encontrar a uno; el rol acota esa búsqueda, no la sustituye. Los conteos
+/// de las pastillas sí salen de la lista completa: se cargó igual.
 ///
 /// El filtrado es LOCAL sobre la respuesta de `admin-agentes`: un endpoint por
 /// combinación de filtros no compra nada a esta escala y sí agrega latencia por
@@ -47,6 +50,10 @@ class SelectAgenteScreen extends ConsumerStatefulWidget {
 }
 
 class _SelectAgenteScreenState extends ConsumerState<SelectAgenteScreen> {
+  /// Letras mínimas para que aparezcan resultados. Con menos, la pantalla
+  /// instruye en vez de volcar los cientos de agentes que hay.
+  static const _minQueryLength = 2;
+
   final _search = TextEditingController();
 
   String _query = '';
@@ -58,13 +65,14 @@ class _SelectAgenteScreenState extends ConsumerState<SelectAgenteScreen> {
     super.dispose();
   }
 
-  /// Agentes del rol activo, luego los que coinciden con la búsqueda. El orden
-  /// lo manda el backend (alfabético) y no se reordena.
+  bool get _queryTooShort => _query.trim().length < _minQueryLength;
+
+  /// Agentes del rol activo que coinciden con la búsqueda. El orden lo manda el
+  /// backend (alfabético) y no se reordena.
   List<AdminAgente> _filterBy(List<AdminAgente> agentes) {
     final q = _query.trim().toLowerCase();
     return agentes.where((a) {
       if (_rol != null && a.rol != _rol) return false;
-      if (q.isEmpty) return true;
       return a.nombre.toLowerCase().contains(q) ||
           (a.email ?? '').toLowerCase().contains(q);
     }).toList();
@@ -174,14 +182,29 @@ class _SelectAgenteScreenState extends ConsumerState<SelectAgenteScreen> {
                 'todavía.',
           );
         }
+        // La lista NO se vuelca completa: son cientos de agentes y desplazarlos
+        // para encontrar a uno es más lento que escribir dos letras. El rol
+        // acota la búsqueda; no la sustituye.
+        if (_queryTooShort) {
+          return SEmptyState(
+            icon: Icons.person_search_outlined,
+            title: 'Busca un agente',
+            message: _rol == null
+                ? 'Escribe al menos $_minQueryLength letras del nombre o del '
+                      'correo.'
+                : 'Escribe al menos $_minQueryLength letras del nombre o del '
+                      'correo. Se buscará solo entre los de rol '
+                      '${_rol!.label}.',
+          );
+        }
         final items = _filterBy(data.agentes);
         if (items.isEmpty) {
           return SEmptyState(
             icon: Icons.search_off_outlined,
             title: 'Sin resultados',
-            message: _query.trim().isEmpty
-                ? 'Ningún agente tiene ese rol.'
-                : 'No encontramos agentes para "$_query".',
+            message: _rol == null
+                ? 'No encontramos agentes para "$_query".'
+                : 'Ningún ${_rol!.label} coincide con "$_query".',
           );
         }
         return _AgenteList(agentes: items, onTap: _viewAs);
