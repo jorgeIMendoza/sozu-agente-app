@@ -112,18 +112,19 @@ class _PushRegistrarState extends ConsumerState<PushRegistrar> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-    final esClienteConSesion = auth.session != null && auth.hasPortalAccess;
+    final esAgenteConSesion = auth.session != null && auth.hasPortalAccess;
     final email = (auth.profile?.email ?? auth.session?.email)
         ?.trim()
         .toLowerCase();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (esClienteConSesion && PushService.soportado) _registrar();
-      _sincronizarRealtime(activo: esClienteConSesion, email: email);
+      if (esAgenteConSesion && PushService.soportado) _registrar();
+      _sincronizarRealtime(activo: esAgenteConSesion, email: email);
       _sincronizarPolling(activo: auth.session != null);
-      // Mediciones "Uso por portal": sesión del portal clientes (solo
-      // clientes reales; la impersonación de admin no cuenta).
-      if (esClienteConSesion) PortalTracking.iniciar();
+      // Mediciones "Uso por portal": sesión del portal AGENTES (solo agentes
+      // reales; un admin no pasa PortalAccess.allows, así que su impersonación
+      // no cuenta).
+      if (esAgenteConSesion) PortalTracking.iniciar();
     });
     return widget.child;
   }
