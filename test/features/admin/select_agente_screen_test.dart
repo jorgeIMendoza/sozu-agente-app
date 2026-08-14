@@ -14,8 +14,9 @@ import 'fake_admin_port.dart';
 /// Lo que fija este archivo: el selector del admin lista AGENTES y se acota por
 /// rol y por texto, y los dos filtros se combinan.
 ///
-/// A diferencia del selector de clientes del que venia portado, aqui NO hace
-/// falta escribir para ver algo: los agentes son decenas.
+/// Y que NO vuelca la lista completa: hasta que no hay 2 letras escritas, la
+/// pantalla instruye. Son cientos de agentes y desplazarlos para encontrar a uno
+/// es mas lento que teclear.
 void main() {
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -43,27 +44,67 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('lista los agentes sin escribir nada', (tester) async {
+  testWidgets('sin escribir no hay lista: instruye', (tester) async {
     await pumpScreen(tester);
 
-    expect(find.byType(AgenteRow), findsNWidgets(3));
+    expect(find.byType(AgenteRow), findsNothing);
+    expect(find.text('Busca un agente'), findsOneWidget);
     expect(find.text('Selecciona un agente'), findsOneWidget);
   });
 
-  testWidgets('las pastillas traen el conteo real por rol', (tester) async {
+  testWidgets('una sola letra todavia no lista', (tester) async {
     await pumpScreen(tester);
 
-    expect(find.text('Todos (3)'), findsOneWidget);
-    expect(find.text('Agente Inmobiliario (1)'), findsOneWidget);
-    expect(find.text('Agente Interno (1)'), findsOneWidget);
+    await tester.enterText(find.byType(SSearchField), 'a');
+    await tester.pumpAndSettle();
+
+    // 'a' casa con los tres nombres; el corte es la longitud, no que no haya
+    // coincidencias.
+    expect(find.byType(AgenteRow), findsNothing);
+    expect(find.text('Busca un agente'), findsOneWidget);
   });
 
-  testWidgets('el filtro de rol acota la lista', (tester) async {
+  testWidgets('con dos letras aparecen los que coinciden', (tester) async {
+    await pumpScreen(tester);
+
+    await tester.enterText(find.byType(SSearchField), 'ca');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AgenteRow), findsOneWidget);
+    expect(find.text('Carla Ruiz'), findsOneWidget);
+  });
+
+  testWidgets('el rol elegido se nombra en la instruccion', (tester) async {
     await pumpScreen(tester);
 
     await tester.tap(find.text('Agente Interno (1)'));
     await tester.pumpAndSettle();
 
+    // Sigue sin listar, pero el vacio dice entre quienes va a buscar: si no, la
+    // pastilla activa parece no hacer nada.
+    expect(find.byType(AgenteRow), findsNothing);
+    expect(find.textContaining('rol Agente Interno'), findsOneWidget);
+  });
+
+  testWidgets('las pastillas traen el conteo real por rol', (tester) async {
+    await pumpScreen(tester);
+
+    // Los conteos salen de la lista COMPLETA, que sí se carga aunque no se
+    // pinte: son el mapa de cuántos hay de cada rol.
+    expect(find.text('Todos (3)'), findsOneWidget);
+    expect(find.text('Agente Inmobiliario (1)'), findsOneWidget);
+    expect(find.text('Agente Interno (1)'), findsOneWidget);
+  });
+
+  testWidgets('el filtro de rol acota la busqueda', (tester) async {
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('Agente Interno (1)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(SSearchField), 'ez');
+    await tester.pumpAndSettle();
+
+    // 'ez' casa con Bruno Pérez y con Alex Hernández; el rol deja solo a Bruno.
     expect(find.byType(AgenteRow), findsOneWidget);
     expect(find.text('Bruno Pérez'), findsOneWidget);
     expect(find.text('Alex Hernández'), findsNothing);
@@ -96,6 +137,9 @@ void main() {
 
   testWidgets('un rol que no es 3 ni 9 solo sale en "Todos"', (tester) async {
     await pumpScreen(tester);
+
+    await tester.enterText(find.byType(SSearchField), 'ruiz');
+    await tester.pumpAndSettle();
 
     // Carla es "Coordinador": el backend la manda, la fila la muestra con el
     // nombre de rol de la BD, pero ninguna pastilla de rol la reclama.

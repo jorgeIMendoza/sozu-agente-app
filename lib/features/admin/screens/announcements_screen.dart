@@ -39,19 +39,28 @@ String _capitalize(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
 const _types = ['informativa', 'accionable', 'urgente', 'exito'];
+
+/// Las del AGENTE, no las del cliente: son el CHECK de `notificaciones_agente`.
+/// Mandar "pagos" o "entrega" pasa la pantalla y revienta al escribir la
+/// notificacion, que es el peor momento para enterarse.
 const _categories = [
-  'pagos',
+  'general',
+  'comisiones',
+  'ofertas',
+  'leads',
+  'citas',
   'documentos',
-  'mantenimiento',
-  'construccion',
-  'reventa',
-  'entrega',
+  'capacitacion',
 ];
 
-/// Envío de avisos a clientes del app (solo super admin): inmediato o
-/// calendarizado, a todos o filtrado por proyecto/modelo/propiedad, por
-/// canales push / correo / WhatsApp. Espejo ligero de "Administrar avisos"
-/// de sozu-admin, apoyado en la edge function admin-avisos-app.
+/// Envío de avisos a AGENTES del app (solo admin de la app): inmediato o
+/// calendarizado, a todos o filtrado por rol, por canales push / correo /
+/// WhatsApp. Se apoya en la edge function `admin-avisos-agentes`.
+///
+/// El destino es el ROL y nada más: a un agente no lo segmenta un proyecto ni
+/// una unidad. Esta pantalla mandaba a los CLIENTES (venía portada del portal
+/// del cliente con sus filtros de proyecto/modelo/nivel/unidad) hasta que se
+/// cambió al público que le toca.
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
 
@@ -60,7 +69,7 @@ class AnnouncementsScreen extends ConsumerStatefulWidget {
       _AnnouncementsScreenState();
 }
 
-/// Ancho maximo del contenido. El mismo que `select_client_screen`: las dos son
+/// Ancho maximo del contenido. El mismo que `select_agente_screen`: las dos son
 /// pantallas de admin y no deben medir distinto.
 const double _kMaxWidth = 880;
 
@@ -70,20 +79,14 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   final _message = TextEditingController();
 
   String _type = 'informativa';
-  String _category = 'pagos';
+  String _category = 'general';
   final Set<String> _channels = {'push'};
 
-  List<CatalogoItem> _projects = [];
-  List<CatalogoItem> _models = [];
-  List<CatalogoItem> _levels = [];
-  List<CatalogoItem> _properties = [];
-  final Set<int> _selectedProjects = {};
-  final Set<int> _selectedModels = {};
-  final Set<int> _selectedLevels = {};
-  final Set<int> _selectedProperties = {};
-  bool _loadingModels = false;
-  bool _loadingLevels = false;
-  bool _loadingProperties = false;
+  /// Roles del portal con su conteo; el destino del aviso.
+  List<RolDestino> _roles = [];
+
+  /// Roles elegidos. Vacio = todos los agentes, igual que en el backend.
+  final Set<int> _selectedRoles = {};
 
   bool _schedule = false;
   DateTime? _scheduledAt;
@@ -122,7 +125,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     });
     try {
       await ref.read(adminPortProvider).setBellAnimation(value);
-      _snack('Animación actualizada para todos los clientes.');
+      _snack('Animación actualizada para todos los agentes.');
     } catch (_) {
       if (mounted) setState(() => _bellAnimation = previous);
       _snack('No se pudo guardar la animación.');
@@ -140,9 +143,9 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
 
   Future<void> _loadCatalogs() async {
     try {
-      final projects = await ref.read(adminPortProvider).projectCatalog();
+      final roles = await ref.read(adminPortProvider).roleCatalog();
       if (!mounted) return;
-      setState(() => _projects = projects);
+      setState(() => _roles = roles);
     } catch (_) {
       /* selector queda vacío; el envío a todos sigue posible */
     }
@@ -159,126 +162,6 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
       });
     } catch (_) {
       if (mounted) setState(() => _loadingAnnouncements = false);
-    }
-  }
-
-  /// Cascada: al cambiar proyectos se recargan modelos, niveles y propiedades
-  /// y se limpian las selecciones dependientes.
-  Future<void> _onProjectsChanged(Set<int> selection) async {
-    setState(() {
-      _selectedProjects
-        ..clear()
-        ..addAll(selection);
-      _selectedModels.clear();
-      _selectedLevels.clear();
-      _selectedProperties.clear();
-      _models = [];
-      _levels = [];
-      _properties = [];
-    });
-    if (selection.isEmpty) return;
-    setState(() {
-      _loadingModels = true;
-      _loadingLevels = true;
-      _loadingProperties = true;
-    });
-    try {
-      final port = ref.read(adminPortProvider);
-      final res = await Future.wait([
-        port.modelCatalog(selection.toList()),
-        // Tolerante: si el backend aún no expone "niveles" no debe tumbar
-        // la carga de modelos/propiedades.
-        port
-            .levelCatalog(selection.toList())
-            .catchError((_) => <CatalogoItem>[]),
-        port.propertyCatalog(selection.toList()),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _models = res[0];
-        _levels = res[1];
-        _properties = res[2];
-      });
-    } catch (_) {
-      /* filtros finos no disponibles */
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loadingModels = false;
-          _loadingLevels = false;
-          _loadingProperties = false;
-        });
-      }
-    }
-  }
-
-  /// Cascada: con modelos seleccionados se recalculan niveles y propiedades.
-  Future<void> _onModelsChanged(Set<int> selection) async {
-    setState(() {
-      _selectedModels
-        ..clear()
-        ..addAll(selection);
-      _selectedLevels.clear();
-      _selectedProperties.clear();
-      _levels = [];
-      _properties = [];
-      _loadingLevels = true;
-      _loadingProperties = true;
-    });
-    try {
-      final port = ref.read(adminPortProvider);
-      final res = await Future.wait([
-        port
-            .levelCatalog(
-              _selectedProjects.toList(),
-              modelIds: selection.toList(),
-            )
-            .catchError((_) => <CatalogoItem>[]),
-        port.propertyCatalog(
-          _selectedProjects.toList(),
-          modelIds: selection.toList(),
-        ),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _levels = res[0];
-        _properties = res[1];
-      });
-    } catch (_) {
-      /* filtro fino no disponible */
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loadingLevels = false;
-          _loadingProperties = false;
-        });
-      }
-    }
-  }
-
-  /// Cascada: con niveles seleccionados solo se listan sus propiedades.
-  Future<void> _onLevelsChanged(Set<int> selection) async {
-    setState(() {
-      _selectedLevels
-        ..clear()
-        ..addAll(selection);
-      _selectedProperties.clear();
-      _properties = [];
-      _loadingProperties = true;
-    });
-    try {
-      final props = await ref
-          .read(adminPortProvider)
-          .propertyCatalog(
-            _selectedProjects.toList(),
-            modelIds: _selectedModels.toList(),
-            levelIds: selection.toList(),
-          );
-      if (mounted) setState(() => _properties = props);
-    } catch (_) {
-      /* filtro fino no disponible */
-    } finally {
-      if (mounted) setState(() => _loadingProperties = false);
     }
   }
 
@@ -309,25 +192,31 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
     });
   }
 
+  /// Cuantos agentes recibirian el aviso con la seleccion actual. `null` si el
+  /// catalogo todavia no llega: mejor no decir nada que decir cero.
+  int? get _targetCount {
+    if (_roles.isEmpty) return null;
+    final elegidos = _selectedRoles.isEmpty
+        ? _roles
+        : _roles.where((r) => _selectedRoles.contains(r.id));
+    return elegidos.fold<int>(0, (a, r) => a + r.total);
+  }
+
+  /// Los roles como items del selector: la etiqueta lleva el conteo para que
+  /// se vea a cuantos va el aviso ANTES de mandarlo.
+  List<CatalogoItem> get _rolesComoCatalogo => _roles
+      .map((r) => CatalogoItem(id: r.id, nombre: '${r.label} (${r.total})'))
+      .toList();
+
   String get _targetSummary {
-    if (_selectedProjects.isEmpty) return 'Todos los clientes';
-    String names(
-      List<CatalogoItem> items,
-      Set<int> selection, [
-      String prefix = '',
-    ]) => items
-        .where((e) => selection.contains(e.id))
-        .map((e) => '$prefix${e.nombre}')
-        .join(', ');
-    return [
-      names(_projects, _selectedProjects),
-      if (_selectedModels.isNotEmpty)
-        'Modelos: ${names(_models, _selectedModels)}',
-      if (_selectedLevels.isNotEmpty)
-        'Niveles: ${names(_levels, _selectedLevels)}',
-      if (_selectedProperties.isNotEmpty)
-        'Unidades: ${names(_properties, _selectedProperties, 'U-')}',
-    ].join(' · ');
+    final n = _targetCount;
+    final sufijo = n == null ? '' : ' ($n)';
+    if (_selectedRoles.isEmpty) return 'Todos los agentes$sufijo';
+    return _roles
+            .where((r) => _selectedRoles.contains(r.id))
+            .map((r) => r.label)
+            .join(' · ') +
+        sufijo;
   }
 
   Future<void> _submit() async {
@@ -374,10 +263,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
             type: _type,
             category: _category,
             channels: _channels.toList(),
-            projectIds: _selectedProjects.toList(),
-            modelIds: _selectedModels.toList(),
-            levelIds: _selectedLevels.toList(),
-            propertyIds: _selectedProperties.toList(),
+            roleIds: _selectedRoles.toList(),
             scheduledFor: _schedule ? _scheduledAt : null,
           );
       if (!mounted) return;
@@ -543,64 +429,21 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                     SizedBox(height: t.space.md),
 
                     const SSectionLabel(text: 'Destinatarios'),
-                    _twoColumns(
-                      t,
-                      _MultiSelectField(
-                        label: 'Proyectos',
-                        items: _projects,
-                        selected: _selectedProjects,
-                        placeholder: 'Todos los clientes',
-                        onChanged: _onProjectsChanged,
-                      ),
-                      _MultiSelectField(
-                        label: 'Modelos',
-                        items: _models,
-                        selected: _selectedModels,
-                        placeholder: _selectedProjects.isEmpty
-                            ? 'Primero elige proyecto'
-                            : _loadingModels
-                            ? 'Cargando…'
-                            : 'Todos los modelos',
-                        enabled:
-                            _selectedProjects.isNotEmpty && !_loadingModels,
-                        onChanged: _onModelsChanged,
-                      ),
-                    ),
-                    SizedBox(height: t.space.xs),
-                    _twoColumns(
-                      t,
-                      _MultiSelectField(
-                        label: 'Niveles',
-                        items: _levels,
-                        selected: _selectedLevels,
-                        placeholder: _selectedProjects.isEmpty
-                            ? 'Primero elige proyecto'
-                            : _loadingLevels
-                            ? 'Cargando…'
-                            : _levels.isEmpty
-                            ? 'Niveles no disponibles'
-                            : 'Todos los niveles',
-                        enabled:
-                            _selectedProjects.isNotEmpty && !_loadingLevels,
-                        onChanged: _onLevelsChanged,
-                      ),
-                      _MultiSelectField(
-                        label: 'Propiedades',
-                        items: _properties,
-                        prefix: 'U-',
-                        selected: _selectedProperties,
-                        placeholder: _selectedProjects.isEmpty
-                            ? 'Primero elige proyecto'
-                            : _loadingProperties
-                            ? 'Cargando…'
-                            : 'Todas las propiedades',
-                        enabled:
-                            _selectedProjects.isNotEmpty && !_loadingProperties,
-                        onChanged: (selection) => setState(
-                          () => _selectedProperties
-                            ..clear()
-                            ..addAll(selection),
-                        ),
+                    // UN campo y no cuatro: a un agente lo segmenta el ROL, no
+                    // un proyecto ni una unidad. Vacio = todos los agentes con
+                    // acceso al portal, que es lo que entiende el backend.
+                    _MultiSelectField(
+                      label: 'Roles',
+                      items: _rolesComoCatalogo,
+                      selected: _selectedRoles,
+                      placeholder: _roles.isEmpty
+                          ? 'Cargando…'
+                          : 'Todos los agentes',
+                      enabled: _roles.isNotEmpty,
+                      onChanged: (selection) => setState(
+                        () => _selectedRoles
+                          ..clear()
+                          ..addAll(selection),
                       ),
                     ),
                     SizedBox(height: t.space.xs),
@@ -695,7 +538,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                         style: t.text.label.copyWith(color: tone.fg),
                       ),
                       Text(
-                        'Aplica a todos los clientes (configuración general, '
+                        'Aplica a todos los agentes (configuración general, '
                         'no por notificación).',
                         style: t.text.caption.copyWith(color: tone.fgMuted),
                       ),

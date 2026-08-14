@@ -25,9 +25,6 @@ class FakeAdminPort implements AdminPort {
     if (f != null) throw f;
   }
 
-  static CatalogoItem _item(int id, String name) =>
-      CatalogoItem.fromJson({'id': id, 'nombre': name});
-
   /// Uno de cada rol y uno con rol desconocido: los tres casos que la UI tiene
   /// que saber pintar y filtrar.
   @override
@@ -59,35 +56,15 @@ class FakeAdminPort implements AdminPort {
     });
   }
 
+  /// Los dos roles del portal con conteos distintos: si la UI sumara mal, un
+  /// total de 5 (3 + 2) lo delata.
   @override
-  Future<List<CatalogoItem>> projectCatalog() async {
-    _throwIfFailing('projectCatalog');
-    return [_item(1, 'Toreo'), _item(2, 'Reforma')];
-  }
-
-  @override
-  Future<List<CatalogoItem>> modelCatalog(List<int> projectIds) async {
-    _throwIfFailing('modelCatalog');
-    return [for (final p in projectIds) _item(p * 10, 'Modelo $p')];
-  }
-
-  @override
-  Future<List<CatalogoItem>> levelCatalog(
-    List<int> projectIds, {
-    List<int> modelIds = const [],
-  }) async {
-    _throwIfFailing('levelCatalog');
-    return [for (final p in projectIds) _item(p * 100, 'Nivel $p')];
-  }
-
-  @override
-  Future<List<CatalogoItem>> propertyCatalog(
-    List<int> projectIds, {
-    List<int> modelIds = const [],
-    List<int> levelIds = const [],
-  }) async {
-    _throwIfFailing('propertyCatalog');
-    return [for (final p in projectIds) _item(p * 1000, '$p-101')];
+  Future<List<RolDestino>> roleCatalog() async {
+    _throwIfFailing('roleCatalog');
+    return const [
+      RolDestino(id: 3, total: 3, nombre: 'Agente Inmobiliario'),
+      RolDestino(id: 9, total: 2, nombre: 'Agente Interno'),
+    ];
   }
 
   @override
@@ -103,10 +80,7 @@ class FakeAdminPort implements AdminPort {
     required String type,
     required String category,
     required List<String> channels,
-    List<int> projectIds = const [],
-    List<int> modelIds = const [],
-    List<int> levelIds = const [],
-    List<int> propertyIds = const [],
+    List<int> roleIds = const [],
     DateTime? scheduledFor,
   }) async {
     _throwIfFailing('createAnnouncement');
@@ -117,9 +91,7 @@ class FakeAdminPort implements AdminPort {
       'tipo': type,
       'categoria': category,
       'canales': channels,
-      'ids_proyectos': projectIds,
-      'ids_modelos': modelIds,
-      'ids_propiedades': propertyIds,
+      'ids_roles': roleIds,
       'programado_para': scheduledFor?.toUtc().toIso8601String(),
       'estado': scheduledFor != null ? 'pendiente' : 'enviado',
     });

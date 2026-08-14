@@ -39,68 +39,27 @@ class AdminAdapter implements AdminPort {
     }
   }
 
-  static List<CatalogoItem> _catalog(Map<String, dynamic> res, String key) =>
-      ((res[key] as List?) ?? [])
-          .map((e) => CatalogoItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-
   @override
   Future<AdminAgentes> agentes() async =>
       AdminAgentes.fromJson(await _invoke('admin-agentes'));
 
   @override
-  Future<List<CatalogoItem>> projectCatalog() async => _catalog(
-    await _invoke('admin-avisos-app', body: {'action': 'catalogos'}),
-    'proyectos',
-  );
-
-  @override
-  Future<List<CatalogoItem>> modelCatalog(List<int> projectIds) async =>
-      _catalog(
-        await _invoke(
-          'admin-avisos-app',
-          body: {'action': 'modelos', 'ids_proyectos': projectIds},
-        ),
-        'modelos',
-      );
-
-  @override
-  Future<List<CatalogoItem>> levelCatalog(
-    List<int> projectIds, {
-    List<int> modelIds = const [],
-  }) async => _catalog(
-    await _invoke(
-      'admin-avisos-app',
-      body: {
-        'action': 'niveles',
-        'ids_proyectos': projectIds,
-        if (modelIds.isNotEmpty) 'ids_modelos': modelIds,
-      },
-    ),
-    'niveles',
-  );
-
-  @override
-  Future<List<CatalogoItem>> propertyCatalog(
-    List<int> projectIds, {
-    List<int> modelIds = const [],
-    List<int> levelIds = const [],
-  }) async => _catalog(
-    await _invoke(
-      'admin-avisos-app',
-      body: {
-        'action': 'propiedades',
-        'ids_proyectos': projectIds,
-        if (modelIds.isNotEmpty) 'ids_modelos': modelIds,
-        if (levelIds.isNotEmpty) 'ids_niveles': levelIds,
-      },
-    ),
-    'propiedades',
-  );
+  Future<List<RolDestino>> roleCatalog() async {
+    final res = await _invoke(
+      'admin-avisos-agentes',
+      body: {'action': 'roles'},
+    );
+    return ((res['roles'] as List?) ?? [])
+        .map((e) => RolDestino.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
 
   @override
   Future<List<AvisoApp>> announcements() async {
-    final res = await _invoke('admin-avisos-app', body: {'action': 'listar'});
+    final res = await _invoke(
+      'admin-avisos-agentes',
+      body: {'action': 'listar'},
+    );
     return ((res['avisos'] as List?) ?? [])
         .map((e) => AvisoApp.fromJson(Map<String, dynamic>.from(e)))
         .toList();
@@ -113,14 +72,11 @@ class AdminAdapter implements AdminPort {
     required String type,
     required String category,
     required List<String> channels,
-    List<int> projectIds = const [],
-    List<int> modelIds = const [],
-    List<int> levelIds = const [],
-    List<int> propertyIds = const [],
+    List<int> roleIds = const [],
     DateTime? scheduledFor,
   }) async {
     final res = await _invoke(
-      'admin-avisos-app',
+      'admin-avisos-agentes',
       body: {
         'action': 'crear',
         'titulo': title,
@@ -128,10 +84,7 @@ class AdminAdapter implements AdminPort {
         'tipo': type,
         'categoria': category,
         'canales': channels,
-        if (projectIds.isNotEmpty) 'ids_proyectos': projectIds,
-        if (modelIds.isNotEmpty) 'ids_modelos': modelIds,
-        if (levelIds.isNotEmpty) 'ids_niveles': levelIds,
-        if (propertyIds.isNotEmpty) 'ids_propiedades': propertyIds,
+        if (roleIds.isNotEmpty) 'ids_roles': roleIds,
         if (scheduledFor != null)
           'programado_para': scheduledFor.toUtc().toIso8601String(),
       },
@@ -142,7 +95,7 @@ class AdminAdapter implements AdminPort {
   @override
   Future<bool> cancelAnnouncement(int announcementId) async {
     final res = await _invoke(
-      'admin-avisos-app',
+      'admin-avisos-agentes',
       body: {'action': 'cancelar', 'id': announcementId},
     );
     return res['cancelado'] == true;
@@ -151,7 +104,7 @@ class AdminAdapter implements AdminPort {
   @override
   Future<String> bellAnimation() async {
     final res = await _invoke(
-      'admin-avisos-app',
+      'admin-avisos-agentes',
       body: {'action': 'config_get'},
     );
     return (res['animacion_campana'] as String?) ?? 'gol';
@@ -160,7 +113,7 @@ class AdminAdapter implements AdminPort {
   @override
   Future<void> setBellAnimation(String animation) async {
     await _invoke(
-      'admin-avisos-app',
+      'admin-avisos-agentes',
       body: {'action': 'config_set', 'animacion_campana': animation},
     );
   }

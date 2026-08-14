@@ -10,41 +10,22 @@ abstract interface class AdminPort {
   /// Agentes impersonables (roles 3 y 9), con su rol para poder filtrarlos.
   Future<AdminAgentes> agentes();
 
-  /// Proyectos activos comercializados por SOZU.
-  Future<List<CatalogoItem>> projectCatalog();
-
-  /// Modelos disponibles dentro de los proyectos indicados.
-  Future<List<CatalogoItem>> modelCatalog(List<int> projectIds);
-
-  /// Niveles (numero de piso) existentes en los proyectos indicados, acotados a
-  /// `modelIds` cuando se pasa.
-  Future<List<CatalogoItem>> levelCatalog(
-    List<int> projectIds, {
-    List<int> modelIds,
-  });
-
-  /// Propiedades de los proyectos indicados, acotadas a modelos y niveles.
-  Future<List<CatalogoItem>> propertyCatalog(
-    List<int> projectIds, {
-    List<int> modelIds,
-    List<int> levelIds,
-  });
+  /// Roles del portal con cuantos agentes tiene cada uno, para elegir el
+  /// publico de un aviso.
+  Future<List<RolDestino>> roleCatalog();
 
   /// Avisos enviados y programados.
   Future<List<AvisoApp>> announcements();
 
-  /// Crea un aviso, o lo programa si viene `scheduledFor`. Los `*Ids` acotan al
-  /// publico destino; sin ninguno va a todos los clientes.
+  /// Crea un aviso, o lo programa si viene `scheduledFor`. `roleIds` acota el
+  /// publico; vacio va a todos los agentes del portal.
   Future<AvisoApp> createAnnouncement({
     required String title,
     required String message,
     required String type,
     required String category,
     required List<String> channels,
-    List<int> projectIds,
-    List<int> modelIds,
-    List<int> levelIds,
-    List<int> propertyIds,
+    List<int> roleIds,
     DateTime? scheduledFor,
   });
 
@@ -54,6 +35,6 @@ abstract interface class AdminPort {
   /// Animacion de llegada de notificaciones: 'sobre' | 'gol' | 'cohete'.
   Future<String> bellAnimation();
 
-  /// Cambia la animacion de llegada de notificaciones para todos los clientes.
+  /// Cambia la animacion de llegada de notificaciones para todos los agentes.
   Future<void> setBellAnimation(String animation);
 }
