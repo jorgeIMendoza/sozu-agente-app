@@ -1,3 +1,5 @@
+import 'package:http/http.dart' as http;
+
 import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/shared/adapters/anon_function.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
@@ -6,17 +8,24 @@ import 'package:sozu_agente_app/shared/ports/app_version_port.dart';
 /// Implementacion actual de [AppVersionPort] sobre la edge function
 /// `agente-app-version`: la unica frontera donde se conocen sus tipos.
 class AppVersionAdapter implements AppVersionPort {
+  /// Solo para tests: fija los headers de la llamada sin tocar red.
+  final http.Client? client;
+
+  const AppVersionAdapter({this.client});
+
   /// Version minima/sugerida y URLs de tienda.
   ///
   /// Va por [invokeAnonFunction] y NO por `functions.invoke`: esta llamada corre
   /// sin sesion (el gate decide antes del login).
   ///
   /// `conAuthorization: true` NO es opcional aqui. Esta funcion conserva
-  /// `verify_jwt = true` —solo se apaga en las de acceso— y el gateway de
+  /// `verify_jwt = true` (solo se apaga en las de acceso) y el gateway de
   /// PRODUCCION responde `401 UNAUTHORIZED_NO_AUTH_HEADER` cuando la llave viaja
   /// unicamente en `apikey`. Como el gate traga cualquier error y degrada a "no
   /// gatear", el sintoma no seria una pantalla roja sino que el aviso de version
-  /// nueva NUNCA aparece. Verificado con curl contra el proyecto de produccion.
+  /// nueva NUNCA aparece. Verificado con curl contra produccion, y en
+  /// sozu-cliente-app le paso a la 1.0.3 en la calle. Lo fija
+  /// `test/shared/app_version_adapter_test.dart`.
   @override
   Future<AppVersionInfo> version() async {
     final AnonFunctionResponse res;
@@ -24,6 +33,7 @@ class AppVersionAdapter implements AppVersionPort {
       res = await invokeAnonFunction(
         'agente-app-version',
         conAuthorization: true,
+        client: client,
       );
     } catch (_) {
       throw ApiError(0, 'network_error');
