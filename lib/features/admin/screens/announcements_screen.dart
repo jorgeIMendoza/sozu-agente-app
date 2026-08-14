@@ -866,7 +866,6 @@ class _MultiSelectField extends StatefulWidget {
   final List<CatalogoItem> items;
   final Set<int> selected;
   final String placeholder;
-  final String prefix;
   final bool enabled;
   final ValueChanged<Set<int>> onChanged;
 
@@ -876,7 +875,6 @@ class _MultiSelectField extends StatefulWidget {
     required this.selected,
     required this.placeholder,
     required this.onChanged,
-    this.prefix = '',
     this.enabled = true,
   });
 
@@ -917,7 +915,7 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
     if (widget.selected.isEmpty) return '';
     final names = widget.items
         .where((e) => widget.selected.contains(e.id))
-        .map((e) => '${widget.prefix}${e.nombre}')
+        .map((e) => e.nombre)
         .toList();
     if (names.length <= _kSummaryMaxNames) return names.join(', ');
     final shown = names.take(_kSummaryMaxNames).join(', ');
@@ -930,7 +928,6 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
       builder: (ctx) => _MultiSelectDialog(
         label: widget.label,
         items: widget.items,
-        prefix: widget.prefix,
         initial: widget.selected,
       ),
     );
@@ -967,13 +964,11 @@ class _MultiSelectFieldState extends State<_MultiSelectField> {
 class _MultiSelectDialog extends StatefulWidget {
   final String label;
   final List<CatalogoItem> items;
-  final String prefix;
   final Set<int> initial;
 
   const _MultiSelectDialog({
     required this.label,
     required this.items,
-    required this.prefix,
     required this.initial,
   });
 
@@ -1068,10 +1063,7 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
                           dense: true,
                           controlAffinity: ListTileControlAffinity.leading,
                           contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            '${widget.prefix}${item.nombre}',
-                            style: t.text.body,
-                          ),
+                          title: Text(item.nombre, style: t.text.body),
                           value: _selection.contains(item.id),
                           onChanged: (v) => setState(() {
                             v == true
