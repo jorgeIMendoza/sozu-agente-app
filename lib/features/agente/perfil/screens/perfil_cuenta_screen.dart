@@ -23,6 +23,7 @@ class PerfilCuentaScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Datos de tu cuenta',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         asyncPerfil.when(
           loading: () => const PerfilSubvistaCargando(),

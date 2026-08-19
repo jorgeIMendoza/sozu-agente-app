@@ -24,6 +24,9 @@ class FakePerfilAgentePort implements PerfilAgentePort {
 
   FirmaDeCarta firma = const FirmaDeCarta();
 
+  /// Trazo autógrafo que llegó en la última [iniciarFirmaDeCarta].
+  String? ultimaFirmaAutografa;
+
   void _registrar(String metodo) {
     log.add(metodo);
     final fallo = proximoFallo;
@@ -141,6 +144,7 @@ class FakePerfilAgentePort implements PerfilAgentePort {
   @override
   Future<FirmaDeCarta> iniciarFirmaDeCarta({String? firmaAutografa}) async {
     _registrar('iniciarFirmaDeCarta');
+    ultimaFirmaAutografa = firmaAutografa;
     return firma;
   }
 
@@ -232,7 +236,11 @@ Map<String, dynamic> _jsonDePrueba() => <String, dynamic>{
         'estado': 'partial',
         'faltantes': ['RFC', 'Régimen fiscal'],
       },
-      {'id': 'bank-accounts', 'etiqueta': 'Cuenta bancaria', 'estado': 'complete'},
+      {
+        'id': 'bank-accounts',
+        'etiqueta': 'Cuenta bancaria',
+        'estado': 'complete',
+      },
       {'id': 'training', 'etiqueta': 'Capacitación', 'estado': 'complete'},
     ],
     'secciones': {

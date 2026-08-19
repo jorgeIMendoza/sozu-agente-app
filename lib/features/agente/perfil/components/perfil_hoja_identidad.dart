@@ -6,6 +6,7 @@ import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja.da
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
+import 'package:sozu_agente_app/features/agente/perfil/services/validaciones_del_perfil.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -98,7 +99,8 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
     final hoy = DateTime.now();
     final elegida = await showDatePicker(
       context: context,
-      initialDate: _fechaNacimiento ?? DateTime(hoy.year - 30, hoy.month, hoy.day),
+      initialDate:
+          _fechaNacimiento ?? DateTime(hoy.year - 30, hoy.month, hoy.day),
       firstDate: DateTime(1920),
       lastDate: hoy,
       helpText: 'Tu fecha de nacimiento',
@@ -110,7 +112,7 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
   List<String> get _faltantes => [
     if (_nombre.text.trim().isEmpty) 'Nombre completo',
     if (_telefono.text.trim().length != 10) 'Teléfono (10 dígitos)',
-    if (_curp.text.trim().length != 18) 'CURP (18 caracteres)',
+    if (!curpValido(_curp.text)) 'CURP (18 caracteres con el formato oficial)',
   ];
 
   Future<void> _guardar() async {
@@ -127,23 +129,25 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
       _erroresPorCampo.clear();
     });
     try {
-      await ref.read(perfilAgentePortProvider).guardarIdentidad(
-        nombreLegal: _nombre.text.trim(),
-        telefono: _telefono.text.trim(),
-        curp: _curp.text.trim().toUpperCase(),
-        fechaNacimiento: _fechaNacimiento,
-        sexo: _sexo,
-        domicilio: Domicilio(
-          calle: _vacioANulo(_calle.text),
-          numExt: _vacioANulo(_numExt.text),
-          numInt: _vacioANulo(_numInt.text),
-          colonia: _vacioANulo(_colonia.text),
-          codigoPostal: _vacioANulo(_codigoPostal.text),
-          idPais: _idPais,
-          idEstado: _idEstado,
-          idMunicipio: _idMunicipio,
-        ),
-      );
+      await ref
+          .read(perfilAgentePortProvider)
+          .guardarIdentidad(
+            nombreLegal: _nombre.text.trim(),
+            telefono: _telefono.text.trim(),
+            curp: _curp.text.trim().toUpperCase(),
+            fechaNacimiento: _fechaNacimiento,
+            sexo: _sexo,
+            domicilio: Domicilio(
+              calle: _vacioANulo(_calle.text),
+              numExt: _vacioANulo(_numExt.text),
+              numInt: _vacioANulo(_numInt.text),
+              colonia: _vacioANulo(_colonia.text),
+              codigoPostal: _vacioANulo(_codigoPostal.text),
+              idPais: _idPais,
+              idEstado: _idEstado,
+              idMunicipio: _idMunicipio,
+            ),
+          );
       if (mounted) Navigator.of(context).pop(true);
     } on ApiError catch (e) {
       if (!mounted) return;

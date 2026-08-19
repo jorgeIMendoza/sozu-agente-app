@@ -6,6 +6,7 @@ import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/carga_de_documento.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/documento_del_expediente_fila.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_aviso.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_firma.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvista.dart';
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
@@ -77,6 +78,7 @@ class _PerfilExpedienteScreenState
 
     return PerfilSubvista(
       titulo: 'Mis documentos',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       descripcion:
           'Cada documento que entregas alimenta tu perfil y sube tu porcentaje '
           'de activación. Súbelos completos y legibles: así los validamos a la '
@@ -142,18 +144,21 @@ class _PerfilExpedienteScreenState
                   ),
                   SizedBox(height: t.space.md),
                 ],
-                for (final documento in documentos) ...[
+                // Numeradas como en la web: el agente y quien lo ayuda por
+                // teléfono pueden hablar del "documento 3".
+                for (var i = 0; i < documentos.length; i++) ...[
                   DocumentoDelExpedienteFila(
-                    documento: documento,
-                    ocupado: _enCurso == documento.clave,
+                    documento: documentos[i],
+                    numero: i + 1,
+                    ocupado: _enCurso == documentos[i].clave,
                     bloqueado: _enCurso != null || !puedeEntregar,
                     onEntregar: () =>
-                        _entregar(documento, perfil.catalogos.regimenes),
-                    onVer: documento.tieneArchivo
+                        _entregar(documentos[i], perfil.catalogos.regimenes),
+                    onVer: documentos[i].tieneArchivo
                         ? () => openMedia(
                             context,
-                            documento.urlArchivo,
-                            titulo: documento.nombre,
+                            documentos[i].urlArchivo,
+                            titulo: documentos[i].nombre,
                           )
                         : null,
                   ),
@@ -288,10 +293,7 @@ class _Celda extends StatelessWidget {
         horizontal: t.space.sm,
         vertical: t.space.sm,
       ),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: t.radius.mdBorder,
-      ),
+      decoration: BoxDecoration(color: fondo, borderRadius: t.radius.mdBorder),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -396,7 +398,10 @@ class _FirmaDeCartaPanelState extends ConsumerState<FirmaDeCartaPanel> {
       setState(() => _error = 'La liga de tu carta no es válida.');
       return;
     }
-    final abrio = await launchUrl(destino, mode: LaunchMode.externalApplication);
+    final abrio = await launchUrl(
+      destino,
+      mode: LaunchMode.externalApplication,
+    );
     if (!mounted) return;
     if (!abrio) {
       setState(
@@ -413,17 +418,20 @@ class _FirmaDeCartaPanelState extends ConsumerState<FirmaDeCartaPanel> {
   }
 
   Future<void> _firmar() async {
+    // El trazo se ofrece SIEMPRE y se puede omitir: `agente-perfil` no dice si
+    // la carta lo exige (en la web sale de `cartas_acuerdo`), y su default allá
+    // es que sí. Pedirlo y dejar salir cubre los dos casos; bloquear sin saber
+    // dejaría al agente sin poder firmar cuando la carta no lo pide.
+    final trazo = await mostrarHojaDeFirma(context);
+    if (trazo == null || !mounted) return;
     setState(() {
       _ocupado = true;
       _error = null;
     });
     try {
-      // La firma autógrafa (el trazo ilustrativo) todavía no se captura en el
-      // app: se manda sin ella y el documento se firma digitalmente, que es la
-      // firma con validez legal.
       final firma = await ref
           .read(perfilAgentePortProvider)
-          .iniciarFirmaDeCarta();
+          .iniciarFirmaDeCarta(firmaAutografa: trazo.pngDataUrl);
       ref.invalidate(firmaDeCartaProvider);
       final url = firma.urlParaFirmar;
       if (url == null) {
@@ -511,10 +519,7 @@ class _FirmaDeCartaPanelState extends ConsumerState<FirmaDeCartaPanel> {
           SizedBox(height: t.space.xs),
           Text(
             firma.ayuda,
-            style: t.text.caption.copyWith(
-              color: t.color.fgMuted,
-              height: 1.5,
-            ),
+            style: t.text.caption.copyWith(color: t.color.fgMuted, height: 1.5),
           ),
           if (_abrio) ...[
             SizedBox(height: t.space.xs),

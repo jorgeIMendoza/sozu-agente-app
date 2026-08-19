@@ -1,0 +1,37 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sozu_agente_app/features/agente/perfil/services/validaciones_del_perfil.dart';
+
+/// El CURP se valida con el MISMO regex que el portal web: el backend lo revisa
+/// igual, así que lo único que cambia es cuándo se avisa. Los casos de abajo son
+/// los que antes pasaban con solo contar 18 caracteres.
+void main() {
+  group('curpValido', () {
+    test('acepta un CURP con el formato oficial', () {
+      expect(curpValido('HEGA850312HDFRNL09'), isTrue);
+    });
+
+    test('acepta minúsculas y espacios: se normaliza antes de comparar', () {
+      expect(curpValido('  hega850312hdfrnl09 '), isTrue);
+    });
+
+    test('rechaza 18 caracteres con el formato equivocado', () {
+      // Longitud correcta, estructura no: es exactamente lo que la app dejaba
+      // pasar cuando solo medía el largo.
+      expect(curpValido('123456789012345678'), isFalse);
+    });
+
+    test('rechaza un sexo que no es H ni M', () {
+      expect(curpValido('HEGA850312XDFRNL09'), isFalse);
+    });
+
+    test('rechaza una fecha que no son 6 dígitos', () {
+      expect(curpValido('HEGA85O312HDFRNL09'), isFalse);
+    });
+
+    test('rechaza longitudes distintas de 18', () {
+      expect(curpValido('HEGA850312HDFRNL0'), isFalse);
+      expect(curpValido('HEGA850312HDFRNL099'), isFalse);
+      expect(curpValido(''), isFalse);
+    });
+  });
+}

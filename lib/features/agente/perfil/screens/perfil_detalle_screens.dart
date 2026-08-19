@@ -45,6 +45,7 @@ class PerfilPersonalScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Identidad',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         asyncPerfil.when(
           loading: () => const PerfilSubvistaCargando(),
@@ -167,11 +168,7 @@ class _Faltantes extends StatelessWidget {
             runSpacing: t.space.xs,
             children: [
               for (final f in faltantes)
-                SBadge(
-                  label: f,
-                  tone: SBadgeTone.pending,
-                  size: SBadgeSize.sm,
-                ),
+                SBadge(label: f, tone: SBadgeTone.pending, size: SBadgeSize.sm),
             ],
           ),
         ],
@@ -229,6 +226,7 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
 
     return PerfilSubvista(
       titulo: 'Información fiscal',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         if (nota != null) ...[
           PerfilAvisoSoloLectura.una(
@@ -348,7 +346,8 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
                             if (constancia != null)
                               SBadge(
                                 label: constancia.estado.etiqueta,
-                                tone: constancia.estado ==
+                                tone:
+                                    constancia.estado ==
                                         EstadoDocumento.validado
                                     ? SBadgeTone.positive
                                     : SBadgeTone.pending,
@@ -404,9 +403,8 @@ class PerfilCuentasScreen extends ConsumerWidget {
     final identidad = ref.watch(identidadAgenteProvider);
     final perfil = asyncPerfil.valueOrNull;
 
-    final puedeEditar = nota == null &&
-        permisos.actualizar &&
-        (perfil?.puedeEditar ?? false);
+    final puedeEditar =
+        nota == null && permisos.actualizar && (perfil?.puedeEditar ?? false);
 
     Future<void> alta() async {
       final guardo = await mostrarHojaDeCuentaBancaria(
@@ -453,7 +451,9 @@ class PerfilCuentasScreen extends ConsumerWidget {
       );
       if (ok != true) return;
       try {
-        await ref.read(perfilAgentePortProvider).borrarCuentaBancaria(cuenta.id);
+        await ref
+            .read(perfilAgentePortProvider)
+            .borrarCuentaBancaria(cuenta.id);
         ref.invalidate(perfilAgenteProvider);
         if (context.mounted) _aviso(context, 'Cuenta bancaria eliminada.');
       } on ApiError catch (e) {
@@ -467,6 +467,7 @@ class PerfilCuentasScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Cuenta bancaria',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       accion: puedeEditar
           ? SButton(
               label: 'Agregar',

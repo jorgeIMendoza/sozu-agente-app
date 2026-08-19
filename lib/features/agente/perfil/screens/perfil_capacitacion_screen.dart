@@ -24,6 +24,7 @@ class PerfilCapacitacionScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Capacitación',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         asyncPerfil.when(
           loading: () => const PerfilSubvistaCargando(),
@@ -131,11 +132,7 @@ class _Cita extends StatelessWidget {
               color: t.color.surfaceAlt,
               borderRadius: t.radius.mdBorder,
             ),
-            child: Icon(
-              Icons.event_outlined,
-              size: 17,
-              color: t.color.fgMuted,
-            ),
+            child: Icon(Icons.event_outlined, size: 17, color: t.color.fgMuted),
           ),
           SizedBox(width: t.space.sm),
           Expanded(

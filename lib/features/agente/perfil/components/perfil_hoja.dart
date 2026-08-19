@@ -94,14 +94,13 @@ class HojaDePerfil extends StatelessWidget {
           Divider(height: 1, color: tone.borderSoft),
           Padding(
             padding: EdgeInsets.all(t.space.md),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                for (var i = 0; i < acciones.length; i++) ...[
-                  if (i > 0) SizedBox(width: t.space.xs),
-                  acciones[i],
-                ],
-              ],
+            // Wrap y no Row: dos etiquetas largas no caben en el ancho de un
+            // teléfono y un `Row` las desborda en vez de bajar la segunda.
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: t.space.xs,
+              runSpacing: t.space.xs,
+              children: acciones,
             ),
           ),
         ],

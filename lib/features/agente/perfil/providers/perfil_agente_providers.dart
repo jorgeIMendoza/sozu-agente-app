@@ -56,7 +56,8 @@ final notaSoloLecturaProvider = Provider.family<String?, String>((ref, campo) {
   final perfil = ref.watch(perfilAgenteProvider).valueOrNull;
   if (perfil == null) return null;
   final aplica = switch (campo) {
-    CampoRestringido.fiscal || CampoRestringido.banco => perfil.fiscal.soloLectura,
+    CampoRestringido.fiscal ||
+    CampoRestringido.banco => perfil.fiscal.soloLectura,
     CampoRestringido.constancia => perfil.expediente.constanciaSoloLectura,
     _ => false,
   };
@@ -82,3 +83,18 @@ final administraDatosDeCobroProvider = Provider<bool>((ref) {
 final firmaDeCartaProvider = FutureProvider<FirmaDeCarta>(
   (ref) => ref.watch(perfilAgentePortProvider).consultarFirmaDeCarta(),
 );
+
+/// Pull-to-refresh de las pantallas del Perfil: vuelve a pedir el perfil (y la
+/// firma de la carta, que vive fuera de él) y espera a que llegue.
+///
+/// El error NO se propaga: cada pantalla ya lo pinta con su `SErrorState`, y
+/// dejarlo salir aquí solo deja el indicador de arrastre girando.
+Future<void> refrescarPerfilDelAgente(WidgetRef ref) async {
+  ref.invalidate(perfilAgenteProvider);
+  ref.invalidate(firmaDeCartaProvider);
+  try {
+    await ref.read(perfilAgenteProvider.future);
+  } catch (_) {
+    // Ya lo reporta la pantalla.
+  }
+}

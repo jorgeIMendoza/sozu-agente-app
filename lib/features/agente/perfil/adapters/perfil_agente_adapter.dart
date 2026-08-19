@@ -253,7 +253,7 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
   /// que hospeda ese mismo widget y se refresca el estado al volver.
   ///
   /// ⚠️ La ruta `/widget/{id}` NO está documentada en el repo web: se deduce del
-  /// host y del id del widget. Por eso la pantalla nunca depende solo de ella —
+  /// host y del id del widget. Por eso la pantalla nunca depende solo de ella:
   /// siempre ofrece "Actualizar estado" y le recuerda al agente que el proveedor
   /// también le manda la carta por correo. Si el backend algún día devuelve la
   /// liga real, solo cambia esta función.

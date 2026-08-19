@@ -37,8 +37,12 @@ Future<String?> cargarDocumentoDelExpediente(
     context,
     titulo: esIdentificacion ? 'Identificación oficial' : documento.nombre,
     descripcion: esIdentificacion
+        // El aviso de reemplazo es el de la web: con una identificación basta, y
+        // si sustituye a la anterior la previa deja de contar. Sin decirlo, el
+        // agente cree que subió dos y no sabe cuál vale.
         ? 'Elige con qué te identificas, adjunta el archivo y revísalo antes '
-              'de guardar'
+              'de guardar. Con una identificación es suficiente: si sustituye a '
+              'una anterior, la previa se marca como reemplazada.'
         : 'Adjunta el archivo y revísalo antes de guardar',
     // La identidad admite dos formas del MISMO requisito y solo una queda
     // vigente: subir las dos deja dos identificaciones y verificación no sabe
@@ -49,7 +53,10 @@ Future<String?> cargarDocumentoDelExpediente(
               value: TiposDocumento.ineCompleto,
               label: 'INE (frente y reverso en un solo archivo)',
             ),
-            (value: TiposDocumento.pasaporte, label: 'Pasaporte (página de datos)'),
+            (
+              value: TiposDocumento.pasaporte,
+              label: 'Pasaporte (página de datos)',
+            ),
           ]
         : const [],
     tipoId: esIdentificacion
@@ -78,18 +85,20 @@ Future<String?> cargarDocumentoDelExpediente(
   if (resultado == null) return null;
 
   try {
-    final estado = await ref.read(perfilAgentePortProvider).subirDocumento(
-      tipo: resultado.tipoId,
-      base64: base64Encode(resultado.bytes),
-      nombre: resultado.nombre,
-      contentType: contentTypeDe(resultado.nombre),
-      // NUNCA se pide "validado" desde el app. El portal web lo hace solo cuando
-      // pudo leer el PDF original del SAT (sello + frases + fecha ≤ 3 meses) con
-      // pdf.js; aquí no hay forma equivalente de comprobarlo, y marcar validado
-      // sin comprobar dejaría datos fiscales sin respaldo en las facturas.
-      validado: false,
-      datos: esConstancia ? _datosDesde(resultado.campos) : null,
-    );
+    final estado = await ref
+        .read(perfilAgentePortProvider)
+        .subirDocumento(
+          tipo: resultado.tipoId,
+          base64: base64Encode(resultado.bytes),
+          nombre: resultado.nombre,
+          contentType: contentTypeDe(resultado.nombre),
+          // NUNCA se pide "validado" desde el app. El portal web lo hace solo cuando
+          // pudo leer el PDF original del SAT (sello + frases + fecha ≤ 3 meses) con
+          // pdf.js; aquí no hay forma equivalente de comprobarlo, y marcar validado
+          // sin comprobar dejaría datos fiscales sin respaldo en las facturas.
+          validado: false,
+          datos: esConstancia ? _datosDesde(resultado.campos) : null,
+        );
     ref.invalidate(perfilAgenteProvider);
     return estado == EstadoDocumento.validado
         ? 'Documento validado.'
@@ -145,9 +154,7 @@ SDocAnalisis _camposDeLaConstancia(List<OpcionDeCatalogo> regimenes) => (
       label: 'Régimen fiscal',
       requerido: true,
       kind: SDocFieldKind.catalogo,
-      opciones: [
-        for (final r in regimenes) (id: r.valor, nombre: r.etiqueta),
-      ],
+      opciones: [for (final r in regimenes) (id: r.valor, nombre: r.etiqueta)],
     ),
     const SDocFieldSpec(
       key: 'codigo_postal',
