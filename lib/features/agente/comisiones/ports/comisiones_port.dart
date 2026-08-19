@@ -53,10 +53,7 @@ class CatalogoFiltros {
   final List<String> proyectos;
   final List<OpcionFiltro> estatus;
 
-  const CatalogoFiltros({
-    this.proyectos = const [],
-    this.estatus = const [],
-  });
+  const CatalogoFiltros({this.proyectos = const [], this.estatus = const []});
 
   factory CatalogoFiltros.desdeJson(Map<String, dynamic> j) => CatalogoFiltros(
     proyectos: (j['proyectos'] as List?)?.cast<String>() ?? const [],
@@ -108,6 +105,55 @@ EtapaComision _etapaDe(Object? valor) => switch (valor) {
   'en_revision' => EtapaComision.enRevision,
   _ => EtapaComision.pendiente,
 };
+
+/// Llave por la que se ordena el listado: las seis columnas ordenables de la
+/// tabla del portal web.
+enum OrdenComisiones {
+  folio,
+  proyecto,
+  cliente,
+  precioFinal,
+  montoComision,
+  fechaPago,
+}
+
+extension OrdenComisionesX on OrdenComisiones {
+  /// Rótulo de la llave, para el desplegable de "Ordenar por".
+  String get etiqueta => switch (this) {
+    OrdenComisiones.folio => 'Folio',
+    OrdenComisiones.proyecto => 'Proyecto',
+    OrdenComisiones.cliente => 'Cliente',
+    OrdenComisiones.precioFinal => 'Precio final',
+    OrdenComisiones.montoComision => 'Monto de comisión',
+    OrdenComisiones.fechaPago => 'Fecha de pago',
+  };
+
+  /// Compara dos comisiones por esta llave, en ascendente. Espeja los
+  /// `sortAccessor` de la tabla web: el folio por el id de la cuenta, proyecto y
+  /// cliente en minúsculas, y la fecha ausente al valor cero.
+  int comparar(Comision a, Comision b) => switch (this) {
+    OrdenComisiones.folio => a.idCuentaCobranza.compareTo(b.idCuentaCobranza),
+    OrdenComisiones.proyecto => a.proyecto.toLowerCase().compareTo(
+      b.proyecto.toLowerCase(),
+    ),
+    OrdenComisiones.cliente => _primerCliente(a).compareTo(_primerCliente(b)),
+    OrdenComisiones.precioFinal => a.precioFinal.compareTo(b.precioFinal),
+    OrdenComisiones.montoComision => a.montoComision.compareTo(b.montoComision),
+    OrdenComisiones.fechaPago => _fechaOrdenable(
+      a.fechaPago,
+    ).compareTo(_fechaOrdenable(b.fechaPago)),
+  };
+}
+
+/// Nombre del primer comprador en minúsculas, o vacío si la operación no trae
+/// clientes: es lo que ordena la columna "Cliente" de la web.
+String _primerCliente(Comision c) =>
+    (c.clientes.isEmpty ? '' : c.clientes.first.nombre).toLowerCase();
+
+/// Fecha de pago comparable. La comisión sin pagar vale 0 y queda primero en
+/// ascendente, igual que el `fecha_pago ? getTime() : 0` de la web.
+int _fechaOrdenable(String? fecha) =>
+    DateTime.tryParse(fecha ?? '')?.millisecondsSinceEpoch ?? 0;
 
 /// Una comisión del agente: la operación que la generó, cuánto es y cómo va.
 class Comision {
