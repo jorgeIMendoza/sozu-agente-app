@@ -12,17 +12,22 @@ import 'package:sozu_agente_app/ui/ui.dart';
 /// bien. La hoja se queda abierta con el mensaje cuando falla: cerrarla obligaría
 /// al agente a volver a buscar la cita para reintentar.
 ///
+/// [onReagendar] se dispara con la hoja YA cerrada, porque el reagendado abre su
+/// propia hoja y dos modales apilados dejan al agente sin saber cuál cierra.
+///
 /// Devuelve `true` si la cita quedó cancelada.
 Future<bool?> mostrarDetalleCita(
   BuildContext context, {
   required CitaAgente cita,
   required String? nombreProspecto,
   required Future<String?> Function() onCancelar,
+  VoidCallback? onReagendar,
 }) {
   final cuerpo = _DetalleCita(
     cita: cita,
     nombreProspecto: nombreProspecto,
     onCancelar: onCancelar,
+    onReagendar: onReagendar,
   );
 
   if (context.bp.hasTwoColumns) {
@@ -54,11 +59,13 @@ class _DetalleCita extends StatefulWidget {
   final CitaAgente cita;
   final String? nombreProspecto;
   final Future<String?> Function() onCancelar;
+  final VoidCallback? onReagendar;
 
   const _DetalleCita({
     required this.cita,
     required this.nombreProspecto,
     required this.onCancelar,
+    this.onReagendar,
   });
 
   @override
@@ -71,6 +78,13 @@ class _DetalleCitaState extends State<_DetalleCita> {
   bool _confirmando = false;
   bool _cancelando = false;
   String? _error;
+
+  void _reagendar() {
+    final reagendar = widget.onReagendar;
+    if (reagendar == null) return;
+    Navigator.of(context).pop();
+    reagendar();
+  }
 
   Future<void> _cancelar() async {
     setState(() {
@@ -177,10 +191,7 @@ class _DetalleCitaState extends State<_DetalleCita> {
                     style: t.text.overline.copyWith(color: tone.fgMuted),
                   ),
                   SizedBox(height: t.space.xxs),
-                  Text(
-                    notas,
-                    style: t.text.bodySmall.copyWith(color: tone.fg),
-                  ),
+                  Text(notas, style: t.text.bodySmall.copyWith(color: tone.fg)),
                 ],
               ),
             ),
@@ -229,11 +240,27 @@ class _DetalleCitaState extends State<_DetalleCita> {
                 ],
               )
             else
-              SButton.secondary(
-                label: 'Cancelar cita',
-                icon: Icons.event_busy_outlined,
-                color: tone.danger,
-                onPressed: () => setState(() => _confirmando = true),
+              Row(
+                children: [
+                  Expanded(
+                    child: SButton.secondary(
+                      label: 'Cancelar cita',
+                      icon: Icons.event_busy_outlined,
+                      color: tone.danger,
+                      onPressed: () => setState(() => _confirmando = true),
+                    ),
+                  ),
+                  if (widget.onReagendar != null) ...[
+                    SizedBox(width: t.space.sm),
+                    Expanded(
+                      child: SButton.secondary(
+                        label: 'Reagendar',
+                        icon: Icons.event_repeat_outlined,
+                        onPressed: _reagendar,
+                      ),
+                    ),
+                  ],
+                ],
               ),
           ],
         ],
@@ -319,10 +346,7 @@ class _Aviso extends StatelessWidget {
     final t = context.s;
     return Container(
       padding: EdgeInsets.all(t.space.sm),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: t.radius.mdBorder,
-      ),
+      decoration: BoxDecoration(color: fondo, borderRadius: t.radius.mdBorder),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -340,10 +364,7 @@ class _Aviso extends StatelessWidget {
                   ),
                 ),
                 if (detalle != null)
-                  Text(
-                    detalle!,
-                    style: t.text.caption.copyWith(color: acento),
-                  ),
+                  Text(detalle!, style: t.text.caption.copyWith(color: acento)),
               ],
             ),
           ),

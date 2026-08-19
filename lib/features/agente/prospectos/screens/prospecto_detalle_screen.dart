@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/core/open_document.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
+import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/actividad_prospecto_lista.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/nota_hoja.dart';
@@ -193,26 +196,36 @@ class ProspectoDetalleScreen extends ConsumerWidget {
                         }
                       : null,
                 ),
-                // Agendar visita y generar oferta viven en las features de citas
-                // e inventario; aquí queda el punto de entrada para no perder el
-                // recorrido de la web cuando aterricen.
                 SButton(
                   label: 'Agendar visita',
                   icon: Icons.event_available_outlined,
                   variant: SButtonVariant.ghost,
                   size: SButtonSize.sm,
                   fullWidth: false,
-                  onPressed: () =>
-                      _aviso(context, 'Disponible en la siguiente tanda'),
+                  onPressed: () async {
+                    final cita = await mostrarAgendarCita(
+                      context,
+                      prospecto: ProspectoParaCita(
+                        idPersona: p.id,
+                        nombre: p.nombre,
+                        desarrollos: desarrollosDeFicha(d.desarrollos),
+                      ),
+                    );
+                    if (cita == null || !context.mounted) return;
+                    await recargar();
+                    if (!context.mounted) return;
+                    _aviso(context, cita.aviso ?? 'Cita agendada.');
+                  },
                 ),
+                // La web solo lleva al inventario, sin arrastrar el prospecto:
+                // la oferta se genera desde la unidad que se elija ahí.
                 SButton(
                   label: 'Generar oferta',
                   icon: Icons.description_outlined,
                   variant: SButtonVariant.ghost,
                   size: SButtonSize.sm,
                   fullWidth: false,
-                  onPressed: () =>
-                      _aviso(context, 'Disponible en la siguiente tanda'),
+                  onPressed: () => context.push('/inventario'),
                 ),
               ],
             ),

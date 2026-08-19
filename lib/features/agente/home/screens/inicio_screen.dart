@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
+import 'package:sozu_agente_app/features/agente/citas/ports/citas_port.dart';
+import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/home/components/banner_activacion.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
 import 'package:sozu_agente_app/features/agente/home/components/hoja_detalle_cita.dart';
@@ -24,15 +27,39 @@ import 'package:sozu_agente_app/widgets/fx.dart';
 /// centra el contenido; esto evita que las tarjetas se estiren a 1280 px.
 const double _anchoContenido = 1040;
 
-/// Destino de los dos atajos.
-///
-/// "Agendar cita" también va a Prospectos porque agendar empieza por elegir a
-/// quién se cita. La pantalla de agenda y su diálogo los está armando otro
-/// agente y todavía no existen como ruta: mandar ahí hoy caería en la pantalla
-/// de error del router.
+/// Destinos a los que salta Inicio.
 const String _rutaProspectos = '/prospectos';
 const String _rutaComisiones = '/comisiones';
 const String _rutaPerfil = '/perfil';
+
+/// La capacitación del agente no se reagenda desde la agenda de showroom: tiene
+/// su propio flujo en el expediente, igual que en el portal web.
+const String _rutaCapacitacion = '/perfil/capacitacion';
+
+/// Abre el agendado y, si quedó, refresca el tablero y avisa.
+Future<void> _agendar(
+  BuildContext context,
+  WidgetRef ref, {
+  ProspectoParaCita? prospecto,
+  DesarrolloParaCita? desarrollo,
+  bool reagendar = false,
+}) async {
+  final cita = await mostrarAgendarCita(
+    context,
+    prospecto: prospecto,
+    desarrollo: desarrollo,
+    reagendar: reagendar,
+  );
+  if (cita == null || !context.mounted) return;
+  ref.invalidate(resumenInicioProvider);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        cita.aviso ?? (reagendar ? 'Cita reagendada.' : 'Cita agendada.'),
+      ),
+    ),
+  );
+}
 
 /// Inicio del Portal del Agente: quién es, qué le falta para operar, qué puede
 /// capturar ahora, cómo va de números y qué tiene agendado.
@@ -124,7 +151,10 @@ class InicioScreen extends ConsumerWidget {
                 // números. Con la red caída el agente sigue pudiendo capturar.
                 if (permisos.crear) ...[
                   SizedBox(height: t.space.md),
-                  _Atajos(onNavegar: (ruta) => context.go(ruta)),
+                  _Atajos(
+                    onNavegar: (ruta) => context.go(ruta),
+                    onAgendar: () => _agendar(context, ref),
+                  ),
                 ],
 
                 SizedBox(height: t.space.xs),
@@ -138,8 +168,7 @@ class InicioScreen extends ConsumerWidget {
                   error: (e, _) => [
                     EstadoErrorAgente(
                       error: e,
-                      onReintentar: () =>
-                          ref.invalidate(resumenInicioProvider),
+                      onReintentar: () => ref.invalidate(resumenInicioProvider),
                     ),
                   ],
                   data: (data) => [
@@ -189,8 +218,9 @@ class _TituloSeccion extends StatelessWidget {
 /// apilados.
 class _Atajos extends StatelessWidget {
   final void Function(String ruta) onNavegar;
+  final VoidCallback onAgendar;
 
-  const _Atajos({required this.onNavegar});
+  const _Atajos({required this.onNavegar, required this.onAgendar});
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +236,7 @@ class _Atajos extends StatelessWidget {
         icono: Icons.event_available_outlined,
         titulo: 'Agendar cita',
         subtitulo: 'Coordina una visita al desarrollo',
-        onTap: () => onNavegar(_rutaProspectos),
+        onTap: onAgendar,
       ),
     ];
 
@@ -331,6 +361,45 @@ class _Citas extends ConsumerWidget {
 
   const _Citas({required this.citas, required this.enmascarar});
 
+  /// Reagendar es agendar de nuevo sobre el mismo prospecto y desarrollo, con
+  /// una excepción que también hace la web: la capacitación del agente no vive
+  /// en la agenda de showroom, así que se manda a su paso del expediente.
+  void _reagendar(BuildContext context, WidgetRef ref, CitaAgente cita) {
+    if (cita.idTipoCita == kTipoCitaCapacitacion) {
+      context.push(_rutaCapacitacion);
+      return;
+    }
+    final idProspecto = cita.idPersonaProspecto;
+    final idDesarrollo = cita.idProyecto;
+    _agendar(
+      context,
+      ref,
+      reagendar: true,
+      // Sin ids no hay nada que precargar: la hoja los pide como si fuera una
+      // cita nueva en vez de mandar al servidor un reagendado incompleto.
+      prospecto: idProspecto == null
+          ? null
+          : ProspectoParaCita(
+              idPersona: idProspecto,
+              nombre: cita.prospectoNombre ?? 'Prospecto',
+              desarrollos: idDesarrollo == null
+                  ? const []
+                  : [
+                      DesarrolloParaCita(
+                        id: idDesarrollo,
+                        nombre: cita.proyectoNombre ?? 'Desarrollo',
+                      ),
+                    ],
+            ),
+      desarrollo: idDesarrollo == null
+          ? null
+          : DesarrolloParaCita(
+              id: idDesarrollo,
+              nombre: cita.proyectoNombre ?? 'Desarrollo',
+            ),
+    );
+  }
+
   Future<void> _abrirDetalle(
     BuildContext context,
     WidgetRef ref,
@@ -340,6 +409,7 @@ class _Citas extends ConsumerWidget {
       context,
       cita: cita,
       nombreProspecto: enmascarar(cita.prospectoNombre),
+      onReagendar: () => _reagendar(context, ref, cita),
       onCancelar: () async {
         try {
           await ref.read(inicioPortProvider).cancelarCita(cita.id);
@@ -359,9 +429,9 @@ class _Citas extends ConsumerWidget {
     );
     if (cancelada != true || !context.mounted) return;
     ref.invalidate(resumenInicioProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cita cancelada.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Cita cancelada.')));
   }
 
   @override

@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/core/portal_theme.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
+import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/avance_obra_card.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/compartir_desarrollo.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/galeria_imagenes.dart';
@@ -114,6 +116,19 @@ class _Ficha extends ConsumerWidget {
         const SnackBar(content: Text('No pudimos abrir el video.')),
       );
     }
+  }
+
+  /// Abre el agendado con el desarrollo ya resuelto y avisa cómo quedó.
+  Future<void> _agendarCita(
+    BuildContext context,
+    DesarrolloParaCita desarrollo,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final cita = await mostrarAgendarCita(context, desarrollo: desarrollo);
+    if (cita == null) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(cita.aviso ?? 'Cita agendada.')),
+    );
   }
 
   void _comoLlegar(
@@ -251,9 +266,8 @@ class _Ficha extends ConsumerWidget {
                   label: 'Ver inventario',
                   icon: Icons.apartment_outlined,
                   isNavigation: true,
-                  onPressed: () => context.push(
-                    '/inventario/unidades?proyecto=${d.id}',
-                  ),
+                  onPressed: () =>
+                      context.push('/inventario/unidades?proyecto=${d.id}'),
                 ),
                 SizedBox(height: t.space.xs),
                 Row(
@@ -262,16 +276,11 @@ class _Ficha extends ConsumerWidget {
                       child: SButton.secondary(
                         label: 'Agendar cita',
                         icon: Icons.event_available_outlined,
-                        // La agenda del showroom es del módulo de Citas, que
-                        // llega en otra tanda: el punto de entrada se queda aquí
-                        // para no rehacer la fila de acciones después. Cuando
-                        // exista, esto navega a su pantalla.
-                        onPressed: () => ScaffoldMessenger.of(
+                        // El desarrollo ya se sabe; el prospecto lo elige el
+                        // agente en la hoja.
+                        onPressed: () => _agendarCita(
                           context,
-                        ).showSnackBar(
-                          const SnackBar(
-                            content: Text('Disponible en la siguiente tanda'),
-                          ),
+                          DesarrolloParaCita(id: d.id, nombre: d.nombre),
                         ),
                       ),
                     ),
@@ -476,7 +485,8 @@ class _Ficha extends ConsumerWidget {
                               lat: ficha.showroom!.latitud!,
                               lng: ficha.showroom!.longitud!,
                               nombre:
-                                  ficha.showroom!.nombre ?? 'Showroom de ventas',
+                                  ficha.showroom!.nombre ??
+                                  'Showroom de ventas',
                               direccion: ficha.showroom!.direccion,
                             ),
                     ),
@@ -624,7 +634,7 @@ class _MiniaturaVista extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 4 / 3,
-              child: SozuNetworkImage(url:vista.url),
+              child: SozuNetworkImage(url: vista.url),
             ),
             if (vista.nombre != null)
               Positioned(
@@ -686,7 +696,7 @@ class _AmenidadTile extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: 4 / 3,
-            child: SozuNetworkImage(url:amenidad.foto!),
+            child: SozuNetworkImage(url: amenidad.foto!),
           ),
           Positioned(
             left: 0,
