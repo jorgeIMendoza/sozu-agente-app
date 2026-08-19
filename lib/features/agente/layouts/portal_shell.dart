@@ -10,6 +10,7 @@ import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_pr
 import 'package:sozu_agente_app/features/agente/providers/agente_providers.dart';
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
 import 'package:sozu_agente_app/features/app_download/components/app_download.dart';
+import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
 import 'package:sozu_agente_app/features/agente/home/components/notification_bell.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_shell_widgets.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
@@ -21,101 +22,88 @@ import 'package:sozu_agente_app/ui/ui.dart';
 /// Ítem del menú, tal como lo consumen el sidebar y el bottom nav.
 typedef AgenteMenuTab = ({IconData icon, String label, String route});
 
-/// Ítem del menú lateral.
-class _PortalNavItemData {
-  final String label;
-  final String route;
-  final IconData icon;
+/// Icono de cada vista del portal. Lo único que el catálogo local sigue
+/// aportando: el NOMBRE y el ORDEN los resuelve `agente-sesion` leyendo
+/// `submenus` del menú 16 (pantalla Administrar Menús).
+const Map<String, IconData> _iconoPorVista = {
+  VistaAgente.inicio: Icons.home_outlined,
+  VistaAgente.inventario: Icons.apartment_outlined,
+  VistaAgente.pipeline: Icons.view_kanban_outlined,
+  VistaAgente.prospectos: Icons.groups_outlined,
+  VistaAgente.comisiones: Icons.payments_outlined,
+  VistaAgente.perfil: Icons.person_outline,
+};
 
-  /// Vista de la BD (`submenus.vista_front_end`, ver [VistaAgente]) con la que se
-  /// resuelve el permiso. `null` = ítem que no existe como submenú allá y se
-  /// muestra en cuanto la sesión resolvió (hoy solo Notificaciones).
-  final String? vista;
+/// Notificaciones no es un submenú de la BD: no tiene permiso que consultar ni
+/// `orden` que respetar, así que se ancla justo antes de Perfil.
+const AgenteMenuTab _tabNotificaciones = (
+  icon: Icons.notifications_outlined,
+  label: 'Notificaciones',
+  route: '/notificaciones',
+);
 
-  const _PortalNavItemData(this.label, this.route, this.icon, {this.vista});
+/// Traduce tabs de la BD a ítems del menú: etiqueta de la BD, icono del catálogo
+/// local. Una vista que allá exista y aquí no tenga pantalla se descarta.
+List<AgenteMenuTab> _itemsDe(
+  List<TabAgente> tabs, {
+  required bool conNotificaciones,
+}) {
+  final items = <AgenteMenuTab>[
+    for (final t in tabs)
+      if (VistaAgente.rutaApp[t.ruta] case final route?)
+        (
+          icon: _iconoPorVista[t.ruta] ?? Icons.circle_outlined,
+          label: t.nombre,
+          route: route,
+        ),
+  ];
+  if (conNotificaciones) {
+    final perfil = items.indexWhere((it) => it.route == '/perfil');
+    items.insert(perfil < 0 ? items.length : perfil, _tabNotificaciones);
+  }
+  return items;
 }
-
-/// Catálogo del menú del portal, en el orden fijo del sidebar. Es la lista
-/// COMPLETA: lo que se pinta sale de [menuAgenteProvider], que le aplica los
-/// permisos de `submenus_permisos` y los recortes del agente dependiente.
-const List<_PortalNavItemData> _portalNavItems = [
-  _PortalNavItemData(
-    'Inicio',
-    '/inicio',
-    Icons.home_outlined,
-    vista: VistaAgente.inicio,
-  ),
-  _PortalNavItemData(
-    'Inventario',
-    '/inventario',
-    Icons.apartment_outlined,
-    vista: VistaAgente.inventario,
-  ),
-  _PortalNavItemData(
-    'Pipeline',
-    '/pipeline',
-    Icons.view_kanban_outlined,
-    vista: VistaAgente.pipeline,
-  ),
-  _PortalNavItemData(
-    'Prospectos',
-    '/prospectos',
-    Icons.groups_outlined,
-    vista: VistaAgente.prospectos,
-  ),
-  _PortalNavItemData(
-    'Comisiones',
-    '/comisiones',
-    Icons.payments_outlined,
-    vista: VistaAgente.comisiones,
-  ),
-  _PortalNavItemData(
-    'Notificaciones',
-    '/notificaciones',
-    Icons.notifications_outlined,
-  ),
-  _PortalNavItemData(
-    'Perfil',
-    '/perfil',
-    Icons.person_outline,
-    vista: VistaAgente.perfil,
-  ),
-];
 
 /// Rutas que el menú puede alcanzar (el catálogo completo, sin permisos). Es la
 /// clave con la que se comprueba que cada ítem tenga su `<GoRoute>`.
 Set<String> portalAllowedRoutes() =>
-    _portalNavItems.map((e) => e.route).toSet();
+    agenteMenuTabs().map((e) => e.route).toSet();
 
-/// Menú completo del portal, en el orden del sidebar. El bottom nav muestra los
-/// primeros como tabs y el resto tras un botón "Más".
-List<AgenteMenuTab> agenteMenuTabs() => [
-  for (final it in _portalNavItems)
-    (icon: it.icon, label: it.label, route: it.route),
-];
+/// Menú completo del portal (catálogo de respaldo, sin permisos ni recortes). El
+/// bottom nav muestra los primeros como tabs y el resto tras un botón "Más".
+List<AgenteMenuTab> agenteMenuTabs() =>
+    _itemsDe(tabsAgenteRespaldo, conNotificaciones: true);
 
-/// Menú VISIBLE: [agenteMenuTabs] filtrado con los permisos de la sesión
-/// (`tabsVisiblesProvider`, que ya aplica los recortes del agente dependiente y
-/// por eso le esconde Comisiones).
+/// Menú VISIBLE: las tabs que resolvió la BD (`tabsVisiblesProvider`, que ya
+/// aplica permisos de lectura y los recortes del agente dependiente y por eso le
+/// esconde Comisiones), con su nombre y su orden.
 ///
 /// Mientras `sesionProvider` carga solo salen Inicio y Perfil - los dos que
 /// ningún rol de agente tiene restringidos -, así que la barra no parpadea al
 /// llegar la respuesta.
 final menuAgenteProvider = Provider<List<AgenteMenuTab>>((ref) {
-  final rutasVisibles = ref
-      .watch(tabsVisiblesProvider)
-      .map((v) => VistaAgente.rutaApp[v])
-      .whereType<String>()
-      .toSet();
   // Notificaciones no es un submenú de la BD: no hay permiso que consultar, pero
   // tampoco se pinta durante la carga (ver el docstring).
   final sesionResuelta = ref.watch(sesionProvider).hasValue;
-  return [
-    for (final it in _portalNavItems)
-      if (it.vista == null ? sesionResuelta : rutasVisibles.contains(it.route))
-        (icon: it.icon, label: it.label, route: it.route),
-  ];
+  return _itemsDe(
+    ref.watch(tabsVisiblesProvider),
+    conNotificaciones: sesionResuelta,
+  );
 });
+
+/// Nombre de la sección de [path] para el encabezado, resuelto contra el
+/// catálogo COMPLETO (el de la BD y, si ahí no aparece, el de respaldo): sobre
+/// las tabs VISIBLES caería a "Inicio" mientras la sesión carga.
+String tituloSeccion(List<TabAgente> catalogo, String path) {
+  final candidatos = [
+    ..._itemsDe(catalogo, conNotificaciones: true),
+    ..._itemsDe(tabsAgenteRespaldo, conNotificaciones: false),
+  ];
+  for (final it in candidatos) {
+    if (_isActive(it.route, path)) return it.label;
+  }
+  return 'Inicio';
+}
 
 /// Activo por prefijo de ruta; "Inicio" solo con match exacto.
 bool _isActive(String route, String path) {
@@ -192,7 +180,7 @@ class PortalShell extends ConsumerWidget {
             Expanded(
               child: Column(
                 children: [
-                  const _PortalShellTopBar(),
+                  _PortalShellTopBar(currentPath: currentPath),
                   Expanded(
                     child: ColoredBox(
                       color: PortalColors.background,
@@ -700,15 +688,18 @@ class _FooterActionButtonState extends State<_FooterActionButton> {
 }
 
 // ---------------------------------------------------------------------------
-// Topbar: buscador global + campana + popover del avatar. En desktop no lleva
-// título de sección.
+// Topbar: título de la sección + buscador global + modo presentación + campana
+// + popover del avatar.
 // ---------------------------------------------------------------------------
 
-class _PortalShellTopBar extends StatelessWidget {
-  const _PortalShellTopBar();
+class _PortalShellTopBar extends ConsumerWidget {
+  final String currentPath;
+
+  const _PortalShellTopBar({required this.currentPath});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final titulo = tituloSeccion(ref.watch(catalogoTabsProvider), currentPath);
     return Container(
       height: kPortalTopBarHeight,
       padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -718,17 +709,33 @@ class _PortalShellTopBar extends StatelessWidget {
           bottom: BorderSide(color: PortalColors.borderSoft, width: 1),
         ),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          PortalTopBarSearch(),
-          Spacer(),
+          // Expanded + ellipsis: el título ocupa el hueco y se recorta él, en
+          // vez de empujar los controles hasta aplastarlos a 1024px.
+          Expanded(
+            child: Text(
+              titulo,
+              overflow: TextOverflow.ellipsis,
+              style: context.s.text.h2.copyWith(
+                fontWeight: FontWeight.w700,
+                color: context.s.color.fg,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          const PortalTopBarSearch(),
+          const SizedBox(width: 12),
           // "Descargar app" solo en web: en la app nativa no aplica.
-          if (kIsWeb) ...[AppDownloadButton(), SizedBox(width: 12)],
+          if (kIsWeb) ...[const AppDownloadButton(), const SizedBox(width: 12)],
           // Botón "Referir" oculto por ahora (a petición). Restaurar:
           // ReferralButton(), SizedBox(width: 12),
-          NotificationBell(),
-          SizedBox(width: 8),
-          PortalTopBarAvatarMenu(),
+          // Modo presentación: vive en el shell y no en cada pantalla, para que
+          // esté en TODAS (en la web es una píldora fija del header).
+          const ModoPresentacionBoton(),
+          const NotificationBell(),
+          const SizedBox(width: 8),
+          const PortalTopBarAvatarMenu(),
         ],
       ),
     );

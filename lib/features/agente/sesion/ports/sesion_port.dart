@@ -23,6 +23,35 @@ abstract final class VistaAgente {
   };
 }
 
+/// Tab del menú del portal, tal como está en `submenus` del menú 16 (pantalla
+/// Administrar Menús): renombrar o reordenar allá cambia el menú del app.
+class TabAgente {
+  /// Vista de la BD (`submenus.vista_front_end`, ver [VistaAgente]).
+  final String ruta;
+  final String nombre;
+  final int orden;
+
+  const TabAgente({required this.ruta, required this.nombre, this.orden = 0});
+
+  factory TabAgente.fromJson(Map<String, dynamic> j) => TabAgente(
+    ruta: (j['ruta'] ?? '') as String,
+    nombre: (j['nombre'] ?? '') as String,
+    orden: intDe(j['orden']) ?? 0,
+  );
+}
+
+/// Menú de respaldo, en el orden histórico del portal. Aplica SOLO cuando
+/// `agente-sesion` no manda `tabs`; una lista vacía significa "todo apagado en
+/// Administrar Menús" y se respeta, igual que el `FALLBACK_TABS` de la web.
+const tabsAgenteRespaldo = <TabAgente>[
+  TabAgente(ruta: VistaAgente.inicio, nombre: 'Inicio', orden: 1),
+  TabAgente(ruta: VistaAgente.inventario, nombre: 'Inventario', orden: 2),
+  TabAgente(ruta: VistaAgente.pipeline, nombre: 'Pipeline', orden: 3),
+  TabAgente(ruta: VistaAgente.prospectos, nombre: 'Prospectos', orden: 4),
+  TabAgente(ruta: VistaAgente.comisiones, nombre: 'Comisiones', orden: 5),
+  TabAgente(ruta: VistaAgente.perfil, nombre: 'Perfil', orden: 6),
+];
+
 /// Permisos efectivos de una vista. Espejo de `useAgentPortalPermissions` del
 /// portal web: salen de `submenus_permisos` para el rol EFECTIVO, y sin al menos
 /// `leer` la vista no existe para ese rol.
@@ -244,6 +273,11 @@ class SesionAgente {
   final HeaderAgente header;
   final Onboarding onboarding;
 
+  /// Menú resuelto en la BD, ya en su orden. El backend lo entrega filtrado por
+  /// permisos y recortes, pero la UI lo vuelve a pasar por [vistaVisible]: los
+  /// dos lados del gate se mantienen espejo.
+  final List<TabAgente> tabs;
+
   /// Ids de proyecto a los que tiene acceso; null = todos (rol irrestricto).
   final List<int>? proyectosAccesibles;
 
@@ -257,6 +291,7 @@ class SesionAgente {
     this.accesoTotal = false,
     this.header = const HeaderAgente(),
     this.onboarding = const Onboarding(),
+    this.tabs = tabsAgenteRespaldo,
     this.proyectosAccesibles,
     this.impersonables,
   });
@@ -273,13 +308,20 @@ class SesionAgente {
       accesoTotal: j['full_access'] == true,
       header: HeaderAgente.fromJson(mapaDe(j['header'])),
       onboarding: Onboarding.fromJson(mapaDe(j['onboarding'])),
+      // Clave ausente = backend que todavía no resuelve el menú: se cae al
+      // respaldo. Presente y vacía = todo apagado en la BD, y eso sí se respeta.
+      tabs: j['tabs'] == null
+          ? tabsAgenteRespaldo
+          : listaDe(j['tabs']).map(TabAgente.fromJson).toList(growable: false),
       proyectosAccesibles: (j['proyectos_accesibles'] as List?)
           ?.map(intDe)
           .whereType<int>()
           .toList(),
       impersonables: j['impersonables'] == null
           ? null
-          : listaDe(j['impersonables']).map(AgenteImpersonable.fromJson).toList(),
+          : listaDe(
+              j['impersonables'],
+            ).map(AgenteImpersonable.fromJson).toList(),
     );
   }
 
