@@ -732,7 +732,7 @@ class _PortalShellTopBar extends ConsumerWidget {
           // ReferralButton(), SizedBox(width: 12),
           // Modo presentación: vive en el shell y no en cada pantalla, para que
           // esté en TODAS (en la web es una píldora fija del header).
-          const ModoPresentacionBoton(),
+          const ModoPresentacionPildora(),
           const NotificationBell(),
           const SizedBox(width: 8),
           const PortalTopBarAvatarMenu(),
