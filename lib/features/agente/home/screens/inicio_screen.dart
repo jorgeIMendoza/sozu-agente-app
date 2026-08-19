@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,10 +18,13 @@ import 'package:sozu_agente_app/features/agente/home/components/tarjeta_cita.dar
 import 'package:sozu_agente_app/features/agente/home/components/tarjeta_kpi.dart';
 import 'package:sozu_agente_app/features/agente/home/ports/inicio_port.dart';
 import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
-import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 
@@ -28,13 +33,17 @@ import 'package:sozu_agente_app/widgets/fx.dart';
 const double _anchoContenido = 1040;
 
 /// Destinos a los que salta Inicio.
-const String _rutaProspectos = '/prospectos';
 const String _rutaComisiones = '/comisiones';
 const String _rutaPerfil = '/perfil';
 
 /// La capacitación del agente no se reagenda desde la agenda de showroom: tiene
 /// su propio flujo en el expediente, igual que en el portal web.
 const String _rutaCapacitacion = '/perfil/capacitacion';
+
+/// Identificadores de telemetría, IDÉNTICOS a los del portal web: si difieren,
+/// el mismo botón cuenta dos veces en el tablero de CTA.
+const String _rutaVistaWeb = '/admin/agent/inicio';
+const String _paginaCta = 'agent_inicio';
 
 /// Abre el agendado y, si quedó, refresca el tablero y avisa.
 Future<void> _agendar(
@@ -67,11 +76,88 @@ Future<void> _agendar(
 /// El orden no es decorativo: primero lo que bloquea (activación del perfil),
 /// luego lo que produce (captura), después el resultado (comisiones) y al final
 /// los compromisos con fecha.
-class InicioScreen extends ConsumerWidget {
+class InicioScreen extends ConsumerStatefulWidget {
   const InicioScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InicioScreen> createState() => _InicioScreenState();
+}
+
+class _InicioScreenState extends ConsumerState<InicioScreen> {
+  late final AppLifecycleListener _cicloDeVida;
+
+  @override
+  void initState() {
+    super.initState();
+    final telemetria = ref.read(telemetriaPortProvider);
+    unawaited(telemetria.registrarVista(_rutaVistaWeb));
+    unawaited(
+      telemetria.registrarCta(
+        pagina: _paginaCta,
+        elementoId: 'page_view',
+        tipo: 'page',
+      ),
+    );
+
+    // La agenda se mueve desde el panel admin mientras el app está en segundo
+    // plano. La web se enteraba por realtime sobre `reservas_citas`, que aquí no
+    // aplica (suscribirse a una tabla rompe "cero queries a tablas"), y un timer
+    // periódico gastaría batería pegándole a producción sin nadie mirando: se
+    // recarga al volver al frente y ya.
+    _cicloDeVida = AppLifecycleListener(onResume: _alVolverAlFrente);
+  }
+
+  @override
+  void dispose() {
+    _cicloDeVida.dispose();
+    super.dispose();
+  }
+
+  void _alVolverAlFrente() {
+    if (!mounted) return;
+    ref.invalidate(resumenInicioProvider);
+  }
+
+  /// Registra el clic de un CTA. No se espera: la telemetría se traga sus
+  /// fallos y nunca retrasa la acción que la disparó.
+  void _cta(String elementoId, String etiqueta) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: _paginaCta,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+          ),
+    );
+  }
+
+  /// El tablero y la activación se recargan JUNTOS: refrescar solo los números
+  /// deja el banner y el porcentaje viejos después de completar un paso del
+  /// expediente.
+  Future<void> _recargar() async {
+    ref.invalidate(sesionProvider);
+    ref.invalidate(resumenInicioProvider);
+    try {
+      await ref.read(resumenInicioProvider.future);
+    } catch (_) {
+      // El error ya lo pinta la pantalla; aquí solo se cierra el gesto.
+    }
+  }
+
+  /// Alta de prospecto con el MISMO formulario de la cartera: el atajo es para
+  /// capturar en el momento, no para ir a mirar la lista.
+  Future<void> _nuevoProspecto() async {
+    final guardado = await editarProspecto(context);
+    if (guardado != true || !mounted) return;
+    ref.invalidate(carteraProspectosProvider);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Prospecto guardado')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = context.s;
     final resumen = ref.watch(resumenInicioProvider);
 
@@ -96,6 +182,10 @@ class InicioScreen extends ConsumerWidget {
         : 'Agente';
     final rol = header?.rol ?? identidad?.rolNombre ?? 'Agente';
 
+    // La insignia de verificación es del aliado externo, igual que el banner de
+    // activación: es el único con expediente que verificar.
+    final esAliadoExterno = identidad?.esAgenteInmobiliario == true;
+
     return Scaffold(
       // Sin `backgroundColor`: el fondo sale del tema, que es el MISMO neutro que
       // pinta el shell del portal. Preguntar por el modo portal para forzar
@@ -106,14 +196,7 @@ class InicioScreen extends ConsumerWidget {
       appBar: const PortalTopBar(title: 'Inicio'),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(resumenInicioProvider);
-            try {
-              await ref.read(resumenInicioProvider.future);
-            } catch (_) {
-              // El error ya lo pinta la pantalla; aquí solo se cierra el gesto.
-            }
-          },
+          onRefresh: _recargar,
           child: ContentFrame(
             maxWidth: _anchoContenido,
             child: ListView(
@@ -131,19 +214,22 @@ class InicioScreen extends ConsumerWidget {
                     '${resumen.valueOrNull?.propiedadesActivas ?? 0}',
                   ),
                   ultimoAcceso: resumen.valueOrNull?.ultimoAcceso,
+                  verificado: esAliadoExterno ? onboarding.verificado : null,
                 ),
 
                 // Activación: solo el aliado externo tiene expediente que
                 // completar, y solo mientras no esté al 100%.
-                if (identidad?.esAgenteInmobiliario == true &&
-                    onboarding.porcentaje < 100) ...[
+                if (esAliadoExterno && onboarding.porcentaje < 100) ...[
                   SizedBox(height: t.space.md),
                   BannerActivacion(
                     porcentaje: onboarding.porcentaje,
                     capacitacionCompleta: onboarding.capacitacionCompleta,
                     identidadBasicaCompleta: onboarding.identidadBasicaCompleta,
                     esDependiente: identidad?.esDependiente ?? false,
-                    onCompletar: () => context.go(_rutaPerfil),
+                    onCompletar: () {
+                      _cta('btn_completar_perfil', 'Completar ahora');
+                      context.go(_rutaPerfil);
+                    },
                   ),
                 ],
 
@@ -152,8 +238,14 @@ class InicioScreen extends ConsumerWidget {
                 if (permisos.crear) ...[
                   SizedBox(height: t.space.md),
                   _Atajos(
-                    onNavegar: (ruta) => context.go(ruta),
-                    onAgendar: () => _agendar(context, ref),
+                    onNuevoProspecto: () {
+                      _cta('btn_nuevo_prospecto', 'Nuevo prospecto');
+                      unawaited(_nuevoProspecto());
+                    },
+                    onAgendar: () {
+                      _cta('btn_agendar_cita', 'Agendar cita');
+                      unawaited(_agendar(context, ref));
+                    },
                   ),
                 ],
 
@@ -180,11 +272,9 @@ class InicioScreen extends ConsumerWidget {
                           : null,
                     ),
                     if (data.citas.isNotEmpty) ...[
-                      _TituloSeccion(
-                        texto: data.citas.length > kMaxCitasInicio
-                            ? 'Citas (${data.citas.length})'
-                            : 'Citas',
-                      ),
+                      // Sin conteo, como la web: el número de la agenda completa
+                      // no cuadra con las tres citas que se alcanzan a ver.
+                      const _TituloSeccion(texto: 'Citas'),
                       _Citas(
                         citas: ref.watch(citasInicioProvider),
                         enmascarar: modo.enmascararOpcional,
@@ -210,17 +300,33 @@ class _TituloSeccion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SSectionLabel(text: texto, trailing: accion);
+    final accion = this.accion;
+    if (accion == null) return SSectionLabel(text: texto);
+
+    // Wrap, y no el `trailing` de SSectionLabel: ese va sin flex y el aviso de
+    // presentación no cabe al lado del título en un teléfono. Como la web
+    // (`flex-wrap`), baja de línea en vez de desbordar.
+    final t = context.s;
+    return Wrap(
+      spacing: t.space.xs,
+      runSpacing: t.space.xxs,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SSectionLabel(text: texto),
+        accion,
+      ],
+    );
   }
 }
 
 /// Los dos atajos de captura. En pantalla ancha van lado a lado; en teléfono,
 /// apilados.
 class _Atajos extends StatelessWidget {
-  final void Function(String ruta) onNavegar;
+  final VoidCallback onNuevoProspecto;
   final VoidCallback onAgendar;
 
-  const _Atajos({required this.onNavegar, required this.onAgendar});
+  const _Atajos({required this.onNuevoProspecto, required this.onAgendar});
 
   @override
   Widget build(BuildContext context) {
@@ -230,7 +336,7 @@ class _Atajos extends StatelessWidget {
         icono: Icons.person_add_alt_outlined,
         titulo: 'Nuevo prospecto',
         subtitulo: 'Captura un comprador potencial',
-        onTap: () => onNavegar(_rutaProspectos),
+        onTap: onNuevoProspecto,
       ),
       TarjetaAccion(
         icono: Icons.event_available_outlined,
