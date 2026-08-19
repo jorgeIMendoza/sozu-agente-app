@@ -32,11 +32,18 @@ class TotalesCartera {
       '$conCompra con compra';
 }
 
+/// Valor de [filtrarProspectos] que selecciona los leads SIN desarrollo. Los
+/// ids de proyecto son positivos, así que un negativo no choca con ninguno.
+const int idSinDesarrollo = -1;
+
 /// Filtra la cartera por texto libre, estado del lead y desarrollo.
 ///
 /// El texto busca en nombre, correo, teléfono y nombre de desarrollo; los otros
 /// dos aciertan si CUALQUIERA de sus desarrollos cumple, porque el filtro es
 /// sobre la persona y el estado vive en la relación persona × desarrollo.
+///
+/// [idDesarrollo] con [idSinDesarrollo] deja solo los leads que no cuelgan de
+/// ningún proyecto.
 List<Prospecto> filtrarProspectos(
   List<Prospecto> prospectos, {
   String busqueda = '',
@@ -58,9 +65,11 @@ List<Prospecto> filtrarProspectos(
             !p.desarrollos.any((d) => d.idEstadoLead == idEstadoLead)) {
           return false;
         }
-        if (idDesarrollo != null &&
-            !p.desarrollos.any((d) => d.idDesarrollo == idDesarrollo)) {
-          return false;
+        if (idDesarrollo != null) {
+          final coincide = idDesarrollo == idSinDesarrollo
+              ? p.desarrollos.any((d) => d.idDesarrollo == null)
+              : p.desarrollos.any((d) => d.idDesarrollo == idDesarrollo);
+          if (!coincide) return false;
         }
         return true;
       })
@@ -70,13 +79,17 @@ List<Prospecto> filtrarProspectos(
 /// Desarrollos presentes en la cartera, para el filtro de la barra. Se arma con
 /// lo que hay en las filas: ofrecer desarrollos sin prospectos solo produce
 /// listas vacías.
+///
+/// Un interés sin proyecto entra bajo [idSinDesarrollo]: descartarlo dejaba
+/// leads imposibles de filtrar.
 List<({int id, String nombre})> desarrollosDeLaCartera(
   List<Prospecto> prospectos,
 ) {
   final porId = <int, String>{};
   for (final p in prospectos) {
     for (final d in p.desarrollos) {
-      if (d.idDesarrollo != null) porId[d.idDesarrollo!] = d.desarrollo;
+      final id = d.idDesarrollo ?? idSinDesarrollo;
+      porId[id] = d.desarrollo.isEmpty ? 'Sin desarrollo' : d.desarrollo;
     }
   }
   final lista = porId.entries.map((e) => (id: e.key, nombre: e.value)).toList();

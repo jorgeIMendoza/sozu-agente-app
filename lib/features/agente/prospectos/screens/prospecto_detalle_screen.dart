@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,27 +17,62 @@ import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port
 import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/services/prospectos_reglas.dart';
-import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
-import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 
+/// Página con la que la web etiqueta los CTA de esta pantalla.
+const _paginaCta = 'agent_prospecto_detalle';
+
+/// Alto máximo de la línea de tiempo antes de darle su propio scroll, como en la
+/// web. En teléfono NO se acota: un área con scroll dentro del scroll de la
+/// página se convierte en una trampa para el dedo.
+const double _altoMaxActividad = 440;
+
 /// Ficha de un prospecto: quién es, en qué desarrollos está interesado, sus
 /// ofertas digitales y toda su actividad.
-class ProspectoDetalleScreen extends ConsumerWidget {
+class ProspectoDetalleScreen extends ConsumerStatefulWidget {
   final int idPersona;
 
   const ProspectoDetalleScreen({super.key, required this.idPersona});
+
+  @override
+  ConsumerState<ProspectoDetalleScreen> createState() =>
+      _ProspectoDetalleScreenState();
+}
+
+class _ProspectoDetalleScreenState
+    extends ConsumerState<ProspectoDetalleScreen> {
+  int get idPersona => widget.idPersona;
+
+  @override
+  void initState() {
+    super.initState();
+    final telemetria = ref.read(telemetriaPortProvider);
+    unawaited(
+      telemetria.registrarVista(
+        '/admin/agent/prospectos/$idPersona',
+        datos: {'persona_id': idPersona},
+      ),
+    );
+    unawaited(
+      telemetria.registrarCta(
+        pagina: _paginaCta,
+        elementoId: 'page_view',
+        tipo: 'page',
+        metadata: {'persona_id': idPersona},
+      ),
+    );
+  }
 
   void _aviso(BuildContext context, String mensaje) => ScaffoldMessenger.of(
     context,
   ).showSnackBar(SnackBar(content: Text(mensaje)));
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final t = context.s;
     final detalle = ref.watch(detalleProspectoProvider(idPersona));
-    final permisos = ref.watch(permisosVistaProvider(VistaAgente.prospectos));
     final modo = ref.watch(modoPresentacionProvider);
 
     return Scaffold(
@@ -79,7 +116,7 @@ class ProspectoDetalleScreen extends ConsumerWidget {
                     ),
                   ),
                 if (detalle.valueOrNull case final ficha?)
-                  ..._contenido(context, ref, ficha, permisos, modo)
+                  ..._contenido(context, ref, ficha, modo)
                 else if (detalle.hasError)
                   SErrorState(
                     title: 'No pudimos abrir este prospecto',
@@ -104,7 +141,6 @@ class ProspectoDetalleScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     DetalleProspecto d,
-    PermisosVista permisos,
     ModoPresentacion modo,
   ) {
     final t = context.s;
@@ -146,17 +182,19 @@ class ProspectoDetalleScreen extends ConsumerWidget {
                         spacing: t.space.xs,
                         runSpacing: t.space.xxs,
                         children: [
+                          // Un conteo no es un logro: va en el tono neutral que
+                          // la insignia reserva para eso. La web lo pinta con el
+                          // color de marca, que no es un tono de SBadge.
                           SBadge(
                             label: d.desarrollos.length == 1
                                 ? '1 desarrollo'
                                 : '${d.desarrollos.length} desarrollos',
-                            tone: SBadgeTone.positive,
                             size: SBadgeSize.sm,
                           ),
                           SBadge(
                             label: p.esPersonaMoral
-                                ? 'Persona moral'
-                                : 'Persona física',
+                                ? 'Persona Moral'
+                                : 'Persona Física',
                             size: SBadgeSize.sm,
                           ),
                         ],
@@ -167,7 +205,7 @@ class ProspectoDetalleScreen extends ConsumerWidget {
               ],
             ),
             SizedBox(height: t.space.md),
-            _Dato(etiqueta: 'Correo', valor: modo.enmascararOpcional(p.email)),
+            _Dato(etiqueta: 'Email', valor: modo.enmascararOpcional(p.email)),
             _Dato(etiqueta: 'Teléfono', valor: modo.enmascararOpcional(tel)),
             _Dato(etiqueta: 'RFC', valor: modo.enmascararOpcional(p.rfc)),
             _Dato(etiqueta: 'CURP', valor: modo.enmascararOpcional(p.curp)),
@@ -181,20 +219,16 @@ class ProspectoDetalleScreen extends ConsumerWidget {
                   icon: Icons.edit_outlined,
                   size: SButtonSize.sm,
                   fullWidth: false,
-                  // Sin permiso de actualizar el servidor lo rechaza, así que el
-                  // botón se ve pero no se puede usar.
-                  onPressed: permisos.actualizar
-                      ? () async {
-                          final ok = await editarProspecto(
-                            context,
-                            persona: p,
-                            desarrollos: d.desarrollos,
-                          );
-                          if (ok != true) return;
-                          await recargar();
-                          ref.invalidate(carteraProspectosProvider);
-                        }
-                      : null,
+                  onPressed: () async {
+                    final ok = await editarProspecto(
+                      context,
+                      persona: p,
+                      desarrollos: d.desarrollos,
+                    );
+                    if (ok != true) return;
+                    await recargar();
+                    ref.invalidate(carteraProspectosProvider);
+                  },
                 ),
                 SButton(
                   label: 'Agendar visita',
@@ -295,22 +329,56 @@ class ProspectoDetalleScreen extends ConsumerWidget {
       ),
       SizedBox(height: t.space.xs),
       SCard(
-        child: ActividadProspectoLista(
-          actividad: d.actividad,
-          onAbrirNota: (nota) async {
-            final ok = await abrirNota(
-              context,
-              idNota: nota.idNota!,
-              texto: textoEditableDeNota(nota.detalle, nota.adjuntos),
-              adjuntos: nota.adjuntos,
-            );
-            if (ok != true) return;
-            await recargar();
-          },
-          onVerAdjunto: (a) => openMedia(context, a.url, titulo: a.nombre),
+        child: _ConScrollPropio(
+          // En pantalla ancha la actividad se acota y hace su propio scroll,
+          // como la web; en teléfono crece con la página.
+          altoMaximo: context.bp.isMobile ? null : _altoMaxActividad,
+          child: ActividadProspectoLista(
+            actividad: d.actividad,
+            onAbrirNota: (nota) => _abrirNota(nota, recargar),
+            onVerNota: (nota) => _abrirNota(nota, recargar, soloLectura: true),
+            onVerAdjunto: (a) => openMedia(context, a.url, titulo: a.nombre),
+          ),
         ),
       ),
     ];
+  }
+
+  /// Abre una nota propia. En [soloLectura] se ve completa y con su formato, y
+  /// desde ahí se puede pasar a editarla.
+  Future<void> _abrirNota(
+    ActividadProspecto nota,
+    Future<void> Function() recargar, {
+    bool soloLectura = false,
+  }) async {
+    final ok = await abrirNota(
+      context,
+      idNota: nota.idNota!,
+      texto: textoEditableDeNota(nota.detalle, nota.adjuntos),
+      html: nota.html,
+      adjuntos: nota.adjuntos,
+      soloLectura: soloLectura,
+    );
+    if (ok != true) return;
+    await recargar();
+  }
+}
+
+/// Acota el alto de su hijo y le da scroll propio. Con [altoMaximo] en null se
+/// pinta tal cual.
+class _ConScrollPropio extends StatelessWidget {
+  final double? altoMaximo;
+  final Widget child;
+
+  const _ConScrollPropio({required this.altoMaximo, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (altoMaximo == null) return child;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: altoMaximo!),
+      child: SingleChildScrollView(child: child),
+    );
   }
 }
 
@@ -366,7 +434,7 @@ class _FilaOferta extends StatelessWidget {
     final nota = <String>[
       if (oferta.fecha != null) formatDateEsMX(oferta.fecha),
       if (oferta.tieneCuenta)
-        'Ya no está disponible'
+        'Ya no está disponible para venta'
       else if (!oferta.tieneLinkCliente)
         'Sin link de cliente',
     ].join(' · ');

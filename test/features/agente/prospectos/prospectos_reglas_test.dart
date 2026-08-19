@@ -80,6 +80,32 @@ void main() {
       final lista = desarrollosDeLaCartera([...cartera, ana]);
       expect(lista.map((d) => d.nombre), ['Margot', 'Torre Sur']);
     });
+
+    test('un lead sin desarrollo es filtrable, no invisible', () {
+      final huerfano = _prospecto(
+        id: 3,
+        nombre: 'Caro Lima',
+        desarrollos: [
+          _desarrollo(idRelacion: 103, nombre: 'Sin desarrollo', estado: 1),
+        ],
+      );
+      final conHuerfano = [...cartera, huerfano];
+
+      // El filtro lo ofrece con su propio centinela...
+      final lista = desarrollosDeLaCartera(conHuerfano);
+      expect(lista.map((d) => d.id), contains(idSinDesarrollo));
+      expect(
+        lista.firstWhere((d) => d.id == idSinDesarrollo).nombre,
+        'Sin desarrollo',
+      );
+
+      // ...y elegirlo deja SOLO a los que no cuelgan de un proyecto.
+      expect(filtrarProspectos(conHuerfano, idDesarrollo: idSinDesarrollo), [
+        huerfano,
+      ]);
+      // Un id real sigue sin traerlo.
+      expect(filtrarProspectos(conHuerfano, idDesarrollo: 7), [ana]);
+    });
   });
 
   group('conteo del encabezado', () {

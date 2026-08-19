@@ -152,15 +152,17 @@ class ProspectosAdapter implements ProspectosPort {
   Future<void> editarNota({
     required int idNota,
     required String texto,
+    String? cuerpoConFormato,
     List<AdjuntoNota> adjuntos = const [],
   }) async {
     // La edición REEMPLAZA el contenido y los adjuntos viven dentro de él, así
     // que se vuelven a escribir sus enlaces. El servidor los re-firma al leer
     // (extrae bucket y ruta de la URL guardada), por eso conservar el enlace
     // temporal no rompe el archivo.
+    final cuerpo = cuerpoConFormato ?? _parrafos(texto);
     await _accion('nota_editar', {
       'id_nota': idNota,
-      'contenido': '${_parrafos(texto)}${_htmlDeAdjuntos(adjuntos)}',
+      'contenido': '$cuerpo${_htmlDeAdjuntos(adjuntos)}',
     });
   }
 

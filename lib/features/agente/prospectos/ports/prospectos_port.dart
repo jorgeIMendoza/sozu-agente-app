@@ -327,9 +327,14 @@ class ActividadProspecto {
   final DateTime? fecha;
   final String titulo;
 
-  /// Texto plano del movimiento. En una nota es su contenido sin formato: se
-  /// muestra tal cual porque el app no pinta HTML (ver [AdjuntoNota]).
+  /// Texto plano del movimiento. En una nota es su contenido sin formato; se usa
+  /// como respaldo cuando [html] viene vacío.
   final String detalle;
+
+  /// Contenido con formato de la nota, con las URLs de sus archivos ya firmadas.
+  /// Vacío en citas y ofertas. Es lo que se conserva al editar: reescribir la
+  /// nota desde [detalle] pierde el formato escrito en el portal web.
+  final String html;
 
   final String? autor;
 
@@ -343,6 +348,7 @@ class ActividadProspecto {
     required this.titulo,
     this.fecha,
     this.detalle = '',
+    this.html = '',
     this.autor,
     this.idNota,
     this.adjuntos = const [],
@@ -358,6 +364,7 @@ class ActividadProspecto {
         titulo: (j['titulo'] ?? '') as String,
         fecha: DateTime.tryParse('${j['fecha'] ?? ''}'),
         detalle: (j['detalle'] ?? '') as String,
+        html: (j['html'] ?? '') as String,
         autor: j['autor'] as String?,
         idNota: intDe(j['id_nota']),
         adjuntos: listaDe(
@@ -367,6 +374,11 @@ class ActividadProspecto {
 
   /// Solo las notas propias se pueden editar o borrar.
   bool get esNotaPropia => tipo == TipoActividad.nota && idNota != null;
+
+  /// La nota no cabe recortada en la línea de tiempo y merece "Ver detalle".
+  /// Mismo criterio que el portal web: 140 caracteres o una imagen dentro.
+  bool get notaLarga =>
+      detalle.length > 140 || html.toLowerCase().contains('<img');
 }
 
 /// Ficha completa de un prospecto.
@@ -535,11 +547,16 @@ abstract interface class ProspectosPort {
   });
 
   /// Reemplaza el contenido de una nota propia. [adjuntos] son los archivos que
-  /// la nota ya traía y que deben conservarse: el contenido se reescribe
-  /// completo, así que omitirlos los desprende de la nota.
+  /// deben quedar pegados: el contenido se reescribe completo, así que omitir uno
+  /// lo desprende de la nota.
+  ///
+  /// [cuerpoConFormato] es el contenido original de la nota SIN sus archivos;
+  /// mandarlo conserva negritas, listas y colores escritos en el portal web. Con
+  /// null el cuerpo se reescribe desde [texto] y el formato se pierde.
   Future<void> editarNota({
     required int idNota,
     required String texto,
+    String? cuerpoConFormato,
     List<AdjuntoNota> adjuntos = const [],
   });
 

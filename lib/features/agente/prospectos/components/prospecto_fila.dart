@@ -19,10 +19,6 @@ class ProspectoFila extends StatelessWidget {
 
   final bool expandido;
 
-  /// Sin permiso de actualizar, el estado y la transferencia se ven pero no se
-  /// pueden mover: el servidor los rechazaría igual.
-  final bool puedeActualizar;
-
   /// Relación cuyo estado se está guardando; deshabilita solo ese selector.
   final int? relacionGuardando;
 
@@ -45,7 +41,6 @@ class ProspectoFila extends StatelessWidget {
     required this.onVerFicha,
     required this.onCambiarEstado,
     required this.onTransferir,
-    this.puedeActualizar = false,
     this.relacionGuardando,
   });
 
@@ -136,12 +131,20 @@ class ProspectoFila extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      SBadge(
-                        label: prospecto.totalUnidades == 1
-                            ? '1 unidad'
-                            : '${prospecto.totalUnidades} unidades',
-                        size: SBadgeSize.sm,
-                      ),
+                      // Sin unidades no se pinta una insignia de cero: un guion
+                      // dice lo mismo sin competir con las que sí tienen.
+                      if (prospecto.totalUnidades == 0)
+                        Text(
+                          '-',
+                          style: t.text.caption.copyWith(color: tone.fgSubtle),
+                        )
+                      else
+                        SBadge(
+                          label: prospecto.totalUnidades == 1
+                              ? '1 unidad'
+                              : '${prospecto.totalUnidades} unidades',
+                          size: SBadgeSize.sm,
+                        ),
                       SizedBox(height: t.space.xxs),
                       IconButton(
                         tooltip: 'Ver ficha del prospecto',
@@ -156,6 +159,17 @@ class ProspectoFila extends StatelessWidget {
               ),
             ),
           ),
+          // FUERA del SPressable a propósito: dentro, cada toque en el selector
+          // abriría y cerraría la fila (el `stopPropagation` de la web).
+          Padding(
+            padding: EdgeInsets.fromLTRB(t.space.sm, 0, t.space.sm, t.space.sm),
+            child: _EstadoColapsado(
+              desarrollos: prospecto.desarrollos,
+              estados: estados,
+              relacionGuardando: relacionGuardando,
+              onCambiarEstado: onCambiarEstado,
+            ),
+          ),
           if (expandido)
             Container(
               width: double.infinity,
@@ -168,7 +182,6 @@ class ProspectoFila extends StatelessWidget {
                     _BloqueDesarrollo(
                       desarrollo: d,
                       estados: estados,
-                      puedeActualizar: puedeActualizar,
                       guardando: relacionGuardando == d.idRelacion,
                       enmascarar: enmascarar,
                       onCambiarEstado: (id) => onCambiarEstado(d, id),
@@ -186,12 +199,54 @@ class ProspectoFila extends StatelessWidget {
   }
 }
 
+/// Estado del lead sin abrir la fila. Con un solo desarrollo se mueve desde
+/// aquí; con varios solo se dice cuántos son, porque cada uno va a su ritmo.
+class _EstadoColapsado extends StatelessWidget {
+  final List<DesarrolloDeProspecto> desarrollos;
+  final List<EstadoLead> estados;
+  final int? relacionGuardando;
+  final void Function(DesarrolloDeProspecto desarrollo, int idEstado)
+  onCambiarEstado;
+
+  const _EstadoColapsado({
+    required this.desarrollos,
+    required this.estados,
+    required this.relacionGuardando,
+    required this.onCambiarEstado,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+
+    if (desarrollos.length != 1) {
+      return Text(
+        desarrollos.isEmpty
+            ? 'Sin desarrollos'
+            : '${desarrollos.length} desarrollos',
+        style: t.text.caption.copyWith(color: t.color.fgSubtle),
+      );
+    }
+
+    final d = desarrollos.single;
+    return SSelectField<int>(
+      hint: d.estado ?? 'Sin estado',
+      value: d.idEstadoLead,
+      opciones: [for (final e in estados) (value: e.id, label: e.nombre)],
+      onChanged: relacionGuardando == d.idRelacion
+          ? null
+          : (v) {
+              if (v != null && v != d.idEstadoLead) onCambiarEstado(d, v);
+            },
+    );
+  }
+}
+
 /// Un desarrollo del prospecto: encabezado con estado y transferencia, y la
 /// lista de unidades con negocio abierto.
 class _BloqueDesarrollo extends StatelessWidget {
   final DesarrolloDeProspecto desarrollo;
   final List<EstadoLead> estados;
-  final bool puedeActualizar;
   final bool guardando;
   final String Function(String) enmascarar;
   final ValueChanged<int> onCambiarEstado;
@@ -200,7 +255,6 @@ class _BloqueDesarrollo extends StatelessWidget {
   const _BloqueDesarrollo({
     required this.desarrollo,
     required this.estados,
-    required this.puedeActualizar,
     required this.guardando,
     required this.enmascarar,
     required this.onCambiarEstado,
@@ -246,13 +300,12 @@ class _BloqueDesarrollo extends StatelessWidget {
                   size: SBadgeSize.sm,
                 ),
               IconButton(
-                tooltip: puedeActualizar
-                    ? 'Transferir a otro agente. Dejarás de verlo en tu cartera.'
-                    : 'No tienes permiso para transferir prospectos',
+                tooltip:
+                    'Transferir a otro agente. Dejarás de verlo en tu cartera.',
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.swap_horiz, size: 18),
                 color: tone.fgMuted,
-                onPressed: puedeActualizar ? onTransferir : null,
+                onPressed: onTransferir,
               ),
             ],
           ),
@@ -262,13 +315,13 @@ class _BloqueDesarrollo extends StatelessWidget {
             hint: desarrollo.estado ?? 'Sin estado',
             value: desarrollo.idEstadoLead,
             opciones: [for (final e in estados) (value: e.id, label: e.nombre)],
-            onChanged: puedeActualizar && !guardando
-                ? (v) {
+            onChanged: guardando
+                ? null
+                : (v) {
                     if (v != null && v != desarrollo.idEstadoLead) {
                       onCambiarEstado(v);
                     }
-                  }
-                : null,
+                  },
           ),
           SizedBox(height: t.space.sm),
           if (desarrollo.unidades.isEmpty)
@@ -326,7 +379,9 @@ class _FilaUnidad extends StatelessWidget {
                 ),
               ),
               Text(
-                unidad.valor == null ? '-' : enmascarar(formatMXN(unidad.valor)),
+                unidad.valor == null
+                    ? '-'
+                    : enmascarar(formatMXN(unidad.valor)),
                 style: t.text.caption.copyWith(
                   fontWeight: FontWeight.w700,
                   color: tone.fg,

@@ -133,7 +133,10 @@ class FakeProspectosPort implements ProspectosPort {
           'fecha': '2026-08-05T18:30:00Z',
           'titulo': 'Nota',
           'detalle': 'Pidió cotización a 24 meses \u{1F4CE} plano.pdf',
-          'html': '<p>Pidió cotización a 24 meses</p>',
+          'html':
+              '<p>Pidió cotización a <strong>24 meses</strong></p>'
+              '<p><a href="https://x/storage/v1/object/sign/documentos/a.pdf'
+              '?t=1" class="crm-attachment">\u{1F4CE} plano.pdf</a></p>',
           'autor': 'Agente Uno',
           'id_nota': 55,
           'adjuntos': [
@@ -218,12 +221,24 @@ class FakeProspectosPort implements ProspectosPort {
     notasCreadas.add((texto: texto, adjuntos: adjuntos.length));
   }
 
+  /// Ediciones de nota recibidas, para fijar qué se conserva al guardar.
+  final List<({String texto, String? cuerpoConFormato, int adjuntos})>
+  notasEditadas = [];
+
   @override
   Future<void> editarNota({
     required int idNota,
     required String texto,
+    String? cuerpoConFormato,
     List<AdjuntoNota> adjuntos = const [],
-  }) async => _registrar('editarNota:$idNota:${adjuntos.length}');
+  }) async {
+    _registrar('editarNota:$idNota:${adjuntos.length}');
+    notasEditadas.add((
+      texto: texto,
+      cuerpoConFormato: cuerpoConFormato,
+      adjuntos: adjuntos.length,
+    ));
+  }
 
   @override
   Future<void> eliminarNota(int idNota) async =>

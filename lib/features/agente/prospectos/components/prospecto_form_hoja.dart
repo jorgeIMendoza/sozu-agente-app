@@ -18,7 +18,7 @@ const _ladas = <SSelectOption<String>>[
 /// Abre el alta o la edición de un prospecto. Devuelve `true` si se guardó,
 /// para que la pantalla que la abrió recargue sus datos.
 ///
-/// Con [persona] en null es un alta y los desarrollos son obligatorios; con
+/// Con [persona] en null es un alta y arriba sale el buscador de duplicados; con
 /// persona es una edición y [desarrollos] son los intereses que ya tiene.
 Future<bool?> editarProspecto(
   BuildContext context, {
@@ -53,15 +53,36 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
   /// manda, porque el servidor da de baja lo que no venga.
   final Map<int, String> _elegidos = {};
 
+  /// Persona que se está editando. Es MUTABLE: el buscador de duplicados
+  /// convierte un alta en edición sin cerrar la hoja.
+  int? _idPersona;
+
+  /// Prospecto elegido en el buscador de duplicados.
+  Prospecto? _existente;
+
+  bool _cargandoExistente = false;
   bool _guardando = false;
   String? _error;
 
-  bool get _esEdicion => widget.persona != null;
+  bool get _esEdicion => _idPersona != null;
+
+  /// La hoja se abrió sobre una persona concreta (botón "Editar" de la ficha):
+  /// ahí no hay nada que desambiguar y el buscador de duplicados no aplica.
+  bool get _abiertaComoEdicion => widget.persona != null;
+
+  bool get _bloqueado => _guardando || _cargandoExistente;
+
+  /// Quitarle el ÚLTIMO desarrollo a un prospecto que ya existe lo saca de la
+  /// cartera y desde el app no hay forma de recuperarlo (el servidor desactiva
+  /// todas sus relaciones sin avisar). En un alta todavía no hay nada que
+  /// perder, así que ahí sí se puede vaciar la lista.
+  bool get _puedeQuitarDesarrollo => !_esEdicion || _elegidos.length > 1;
 
   @override
   void initState() {
     super.initState();
     final p = widget.persona;
+    _idPersona = p?.id;
     _nombre = TextEditingController(text: p?.nombre ?? '');
     _email = TextEditingController(text: p?.email ?? '');
     _telefono = TextEditingController(text: p?.telefono ?? '');
@@ -95,10 +116,66 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
     if (rfc != null) return 'RFC: $rfc';
     final curp = errorCurp(_curp.text);
     if (curp != null) return 'CURP: $curp';
-    if (!_esEdicion && _elegidos.isEmpty) {
-      return 'Elige al menos un desarrollo de interés.';
-    }
+    if (_elegidos.isEmpty) return 'Elige al menos un desarrollo de interés.';
     return null;
+  }
+
+  /// Carga los datos de un prospecto que ya existe y convierte el alta en
+  /// edición. La cartera no trae RFC, CURP ni tipo de persona: eso solo viene en
+  /// la ficha, así que se pide.
+  Future<void> _usarExistente(Prospecto? p) async {
+    if (p == null) {
+      setState(() {
+        _existente = null;
+        _idPersona = null;
+        _elegidos.clear();
+        _error = null;
+        for (final c in [_nombre, _email, _telefono, _rfc, _curp]) {
+          c.clear();
+        }
+        _tipoPersona = 'pf';
+        _lada = 'MX';
+      });
+      return;
+    }
+    setState(() {
+      _existente = p;
+      _cargandoExistente = true;
+      _error = null;
+    });
+    try {
+      final ficha = await ref.read(prospectosPortProvider).detalle(p.idPersona);
+      if (!mounted) return;
+      final persona = ficha.persona;
+      setState(() {
+        _cargandoExistente = false;
+        _idPersona = persona.id;
+        _nombre.text = persona.nombre;
+        _email.text = persona.email ?? '';
+        _telefono.text = persona.telefono ?? '';
+        _rfc.text = persona.rfc ?? '';
+        _curp.text = persona.curp ?? '';
+        _tipoPersona = persona.tipoPersona;
+        _lada = persona.clavePaisTelefono ?? 'MX';
+        _elegidos
+          ..clear()
+          ..addEntries(
+            ficha.desarrollos
+                .where((d) => d.idDesarrollo != null)
+                .map((d) => MapEntry(d.idDesarrollo!, d.nombre)),
+          );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoExistente = false;
+        _existente = null;
+        _error = mensajeDeErrorProspecto(
+          e,
+          porDefecto: 'No pudimos abrir ese prospecto. Intenta de nuevo.',
+        );
+      });
+    }
   }
 
   Future<void> _guardar() async {
@@ -126,7 +203,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
       final port = ref.read(prospectosPortProvider);
       if (_esEdicion) {
         await port.editar(
-          idPersona: widget.persona!.id,
+          idPersona: _idPersona!,
           datos: datos,
           desarrollos: _elegidos.keys.toList(growable: false),
         );
@@ -166,14 +243,14 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
         SButton.secondary(
           label: 'Cancelar',
           fullWidth: false,
-          onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+          onPressed: _bloqueado ? null : () => Navigator.of(context).pop(),
         ),
         SButton(
           label: _esEdicion ? 'Actualizar' : 'Guardar',
           fullWidth: false,
           loading: _guardando,
           loadingLabel: 'Guardando…',
-          onPressed: _guardando ? null : _guardar,
+          onPressed: _bloqueado ? null : _guardar,
         ),
       ],
       children: [
@@ -200,26 +277,54 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
           SizedBox(height: t.space.md),
         ],
 
+        // Buscador de duplicados: elegir uno convierte el alta en edición y
+        // precarga sus datos, en vez de dar de alta a la misma persona otra vez.
+        if (!_abiertaComoEdicion) ...[
+          _BuscadorDeProspecto(
+            prospectos:
+                ref.watch(carteraProspectosProvider).valueOrNull?.prospectos ??
+                const [],
+            valor: _existente,
+            cargando: _cargandoExistente,
+            onElegido: _usarExistente,
+          ),
+          SizedBox(height: t.space.md),
+        ],
+
         // Desarrollos de interés
-        SFieldLabel('Desarrollos de interés', requerido: !_esEdicion),
+        const SFieldLabel('Desarrollos de interés', requerido: true),
         if (_elegidos.isNotEmpty)
           Padding(
             padding: EdgeInsets.only(bottom: t.space.xs),
-            child: Wrap(
-              spacing: t.space.xs,
-              runSpacing: t.space.xs,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final e in _elegidos.entries)
-                  SChoiceChip(
-                    label: e.value,
-                    icon: Icons.check,
-                    selected: true,
-                    size: SChoiceChipSize.sm,
-                    enabled: !_guardando,
-                    // Tocar la pastilla la quita de la lista: es el mismo gesto
-                    // de "deseleccionar" del filtro.
-                    onSelected: (_) => setState(() => _elegidos.remove(e.key)),
+                Wrap(
+                  spacing: t.space.xs,
+                  runSpacing: t.space.xs,
+                  children: [
+                    for (final e in _elegidos.entries)
+                      SChoiceChip(
+                        label: e.value,
+                        icon: Icons.check,
+                        selected: true,
+                        size: SChoiceChipSize.sm,
+                        enabled: !_bloqueado && _puedeQuitarDesarrollo,
+                        // Tocar la pastilla la quita de la lista: es el mismo
+                        // gesto de "deseleccionar" del filtro.
+                        onSelected: (_) =>
+                            setState(() => _elegidos.remove(e.key)),
+                      ),
+                  ],
+                ),
+                if (!_puedeQuitarDesarrollo) ...[
+                  SizedBox(height: t.space.xxs),
+                  Text(
+                    'El último desarrollo no se puede quitar: el prospecto '
+                    'saldría de tu cartera.',
+                    style: t.text.caption.copyWith(color: tone.fgSubtle),
                   ),
+                ],
               ],
             ),
           ),
@@ -251,7 +356,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
               opciones: [
                 for (final d in disponibles) (value: d.id, label: d.nombre),
               ],
-              onChanged: _guardando
+              onChanged: _bloqueado
                   ? null
                   : (id) {
                       if (id == null) return;
@@ -272,14 +377,14 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
             SChoiceChip(
               label: 'Física',
               selected: _tipoPersona == 'pf',
-              enabled: !_guardando,
+              enabled: !_bloqueado,
               onSelected: (_) => setState(() => _tipoPersona = 'pf'),
             ),
             SizedBox(width: t.space.xs),
             SChoiceChip(
               label: 'Moral',
               selected: _tipoPersona == 'pm',
-              enabled: !_guardando,
+              enabled: !_bloqueado,
               onSelected: (_) => setState(() => _tipoPersona = 'pm'),
             ),
           ],
@@ -291,7 +396,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
           controller: _nombre,
           hint: 'Juan Pérez García',
           size: STextFieldSize.md,
-          enabled: !_guardando,
+          enabled: !_bloqueado,
           textCapitalization: TextCapitalization.words,
         ),
         SizedBox(height: t.space.sm),
@@ -304,7 +409,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
           keyboardType: TextInputType.emailAddress,
           // En edición el correo identifica a la persona en la plataforma: se
           // cambia desde el panel, no desde aquí.
-          enabled: !_esEdicion && !_guardando,
+          enabled: !_esEdicion && !_bloqueado,
         ),
         SizedBox(height: t.space.sm),
 
@@ -317,7 +422,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
               child: SSelectField<String>(
                 value: _lada,
                 opciones: _ladas,
-                onChanged: _guardando
+                onChanged: _bloqueado
                     ? null
                     : (v) => setState(() => _lada = v ?? 'MX'),
               ),
@@ -328,7 +433,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
                 controller: _telefono,
                 hint: '5512345678',
                 size: STextFieldSize.md,
-                enabled: !_guardando,
+                enabled: !_bloqueado,
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
                 inputFormatters: [
@@ -346,7 +451,7 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
           controller: _rfc,
           hint: 'PEGJ850101H2A',
           size: STextFieldSize.md,
-          enabled: !_guardando,
+          enabled: !_bloqueado,
           maxLength: 13,
           inputFormatters: [_mayusculas, LengthLimitingTextInputFormatter(13)],
           errorText: errorRfc(_rfc.text),
@@ -359,12 +464,56 @@ class _HojaFormProspectoState extends ConsumerState<_HojaFormProspecto> {
           controller: _curp,
           hint: 'PEGJ850101HDFRRN09',
           size: STextFieldSize.md,
-          enabled: !_guardando,
+          enabled: !_bloqueado,
           maxLength: 18,
           inputFormatters: [_mayusculas, LengthLimitingTextInputFormatter(18)],
           errorText: errorCurp(_curp.text),
           onChanged: (_) => setState(() {}),
         ),
+      ],
+    );
+  }
+}
+
+/// Buscador de la propia cartera para no dar de alta dos veces a la misma
+/// persona. Elegir un prospecto convierte el alta en edición.
+class _BuscadorDeProspecto extends StatelessWidget {
+  final List<Prospecto> prospectos;
+  final Prospecto? valor;
+  final bool cargando;
+  final ValueChanged<Prospecto?> onElegido;
+
+  const _BuscadorDeProspecto({
+    required this.prospectos,
+    required this.valor,
+    required this.cargando,
+    required this.onElegido,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SAutocompleteField<Prospecto>(
+          labelText: '¿Ya lo tienes registrado? Búscalo para no duplicar',
+          hintText: 'Escribe su nombre o correo…',
+          prefixIcon: Icons.search,
+          options: prospectos,
+          labelOf: (p) => p.nombre,
+          searchTextOf: (p) => '${p.nombre} ${p.email ?? ''}',
+          value: valor,
+          enabled: !cargando,
+          onSelected: onElegido,
+        ),
+        if (cargando) ...[
+          SizedBox(height: t.space.xxs),
+          Text(
+            'Cargando sus datos…',
+            style: t.text.caption.copyWith(color: t.color.fgSubtle),
+          ),
+        ],
       ],
     );
   }
