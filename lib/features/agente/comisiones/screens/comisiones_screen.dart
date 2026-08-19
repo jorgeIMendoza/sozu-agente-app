@@ -10,7 +10,7 @@ import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port
 import 'package:sozu_agente_app/features/agente/comisiones/providers/comisiones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
 import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';

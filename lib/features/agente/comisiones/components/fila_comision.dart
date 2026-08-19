@@ -11,7 +11,7 @@ import 'package:sozu_agente_app/features/agente/comisiones/components/hoja_clien
 import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port.dart';
 import 'package:sozu_agente_app/features/agente/comisiones/providers/comisiones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Insignia de la etapa de la comisión.

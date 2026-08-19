@@ -9,7 +9,7 @@ import 'package:sozu_agente_app/features/agente/prospectos/components/actividad_
 import 'package:sozu_agente_app/features/agente/prospectos/components/nota_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port.dart';
-import 'package:sozu_agente_app/features/agente/prospectos/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/services/prospectos_reglas.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
@@ -135,7 +135,7 @@ class ProspectoDetalleScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        modo.oculta(p.nombre),
+                        modo.enmascarar(p.nombre),
                         style: t.text.h3.copyWith(color: tone.fg),
                       ),
                       SizedBox(height: t.space.xxs),
@@ -164,10 +164,10 @@ class ProspectoDetalleScreen extends ConsumerWidget {
               ],
             ),
             SizedBox(height: t.space.md),
-            _Dato(etiqueta: 'Correo', valor: modo.oculta(p.email)),
-            _Dato(etiqueta: 'Teléfono', valor: modo.oculta(tel)),
-            _Dato(etiqueta: 'RFC', valor: modo.oculta(p.rfc)),
-            _Dato(etiqueta: 'CURP', valor: modo.oculta(p.curp)),
+            _Dato(etiqueta: 'Correo', valor: modo.enmascararOpcional(p.email)),
+            _Dato(etiqueta: 'Teléfono', valor: modo.enmascararOpcional(tel)),
+            _Dato(etiqueta: 'RFC', valor: modo.enmascararOpcional(p.rfc)),
+            _Dato(etiqueta: 'CURP', valor: modo.enmascararOpcional(p.curp)),
             SizedBox(height: t.space.md),
             Wrap(
               spacing: t.space.xs,

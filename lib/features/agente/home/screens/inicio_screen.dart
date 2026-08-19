@@ -13,7 +13,7 @@ import 'package:sozu_agente_app/features/agente/home/components/tarjeta_cita.dar
 import 'package:sozu_agente_app/features/agente/home/components/tarjeta_kpi.dart';
 import 'package:sozu_agente_app/features/agente/home/ports/inicio_port.dart';
 import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';

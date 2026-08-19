@@ -27,7 +27,7 @@ class ProspectoFila extends StatelessWidget {
   final int? relacionGuardando;
 
   /// Máscara del modo presentación aplicada a nombre, contacto y montos.
-  final String Function(String?) oculta;
+  final String Function(String) enmascarar;
 
   final VoidCallback onAlternar;
   final VoidCallback onVerFicha;
@@ -40,7 +40,7 @@ class ProspectoFila extends StatelessWidget {
     required this.prospecto,
     required this.estados,
     required this.expandido,
-    required this.oculta,
+    required this.enmascarar,
     required this.onAlternar,
     required this.onVerFicha,
     required this.onCambiarEstado,
@@ -93,7 +93,7 @@ class ProspectoFila extends StatelessWidget {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              oculta(prospecto.nombre),
+                              enmascarar(prospecto.nombre),
                               style: t.text.bodySmall.copyWith(
                                 fontWeight: FontWeight.w700,
                                 color: tone.fg,
@@ -109,13 +109,13 @@ class ProspectoFila extends StatelessWidget {
                         ),
                         SizedBox(height: t.space.xxs),
                         Text(
-                          oculta(prospecto.email ?? '-'),
+                          enmascarar(prospecto.email ?? '-'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: t.text.caption.copyWith(color: tone.fgMuted),
                         ),
                         Text(
-                          oculta(prospecto.telefono ?? '-'),
+                          enmascarar(prospecto.telefono ?? '-'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: t.text.caption.copyWith(color: tone.fgSubtle),
@@ -170,7 +170,7 @@ class ProspectoFila extends StatelessWidget {
                       estados: estados,
                       puedeActualizar: puedeActualizar,
                       guardando: relacionGuardando == d.idRelacion,
-                      oculta: oculta,
+                      enmascarar: enmascarar,
                       onCambiarEstado: (id) => onCambiarEstado(d, id),
                       onTransferir: () => onTransferir(d),
                     ),
@@ -193,7 +193,7 @@ class _BloqueDesarrollo extends StatelessWidget {
   final List<EstadoLead> estados;
   final bool puedeActualizar;
   final bool guardando;
-  final String Function(String?) oculta;
+  final String Function(String) enmascarar;
   final ValueChanged<int> onCambiarEstado;
   final VoidCallback onTransferir;
 
@@ -202,7 +202,7 @@ class _BloqueDesarrollo extends StatelessWidget {
     required this.estados,
     required this.puedeActualizar,
     required this.guardando,
-    required this.oculta,
+    required this.enmascarar,
     required this.onCambiarEstado,
     required this.onTransferir,
   });
@@ -280,7 +280,7 @@ class _BloqueDesarrollo extends StatelessWidget {
             for (final u in desarrollo.unidades)
               Padding(
                 padding: EdgeInsets.only(bottom: t.space.xs),
-                child: _FilaUnidad(unidad: u, oculta: oculta),
+                child: _FilaUnidad(unidad: u, enmascarar: enmascarar),
               ),
         ],
       ),
@@ -291,9 +291,9 @@ class _BloqueDesarrollo extends StatelessWidget {
 /// Unidad con negocio abierto: unidad, tipo, etapa, recotizaciones y valor.
 class _FilaUnidad extends StatelessWidget {
   final UnidadDeProspecto unidad;
-  final String Function(String?) oculta;
+  final String Function(String) enmascarar;
 
-  const _FilaUnidad({required this.unidad, required this.oculta});
+  const _FilaUnidad({required this.unidad, required this.enmascarar});
 
   @override
   Widget build(BuildContext context) {
@@ -326,7 +326,7 @@ class _FilaUnidad extends StatelessWidget {
                 ),
               ),
               Text(
-                unidad.valor == null ? '-' : oculta(formatMXN(unidad.valor)),
+                unidad.valor == null ? '-' : enmascarar(formatMXN(unidad.valor)),
                 style: t.text.caption.copyWith(
                   fontWeight: FontWeight.w700,
                   color: tone.fg,

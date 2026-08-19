@@ -6,7 +6,7 @@ import 'package:sozu_agente_app/features/agente/pipeline/components/compartir_ne
 import 'package:sozu_agente_app/features/agente/pipeline/components/etapa_badge.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/pipeline_modal.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
-import 'package:sozu_agente_app/features/agente/pipeline/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/providers/pipeline_providers.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/services/pipeline_textos.dart';
 import 'package:sozu_agente_app/ui/ui.dart';

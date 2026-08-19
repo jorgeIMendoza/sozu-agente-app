@@ -7,7 +7,7 @@ import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_
 import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/transferir_prospecto_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port.dart';
-import 'package:sozu_agente_app/features/agente/prospectos/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/services/prospectos_reglas.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
@@ -327,7 +327,7 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
                 expandido: _abiertos.contains(p.idPersona),
                 puedeActualizar: permisos.actualizar,
                 relacionGuardando: _relacionGuardando,
-                oculta: modo.oculta,
+                enmascarar: modo.enmascarar,
                 onAlternar: () => setState(() {
                   if (!_abiertos.remove(p.idPersona)) {
                     _abiertos.add(p.idPersona);
