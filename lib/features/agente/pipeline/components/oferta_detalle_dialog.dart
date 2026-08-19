@@ -50,9 +50,23 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
   int? _esquemaId;
   bool _guardando = false;
   bool _generandoLink = false;
+
+  /// Los esquemas arrancan a la vista, como en la web: es el bloque por el que
+  /// se abre el detalle.
+  bool _esquemasAbiertos = true;
+
   String? _error;
 
   Negocio get _negocio => widget.negocio;
+
+  /// Precio sobre el que se calculan todos los importes de los esquemas.
+  ///
+  /// En una oferta de PRODUCTO manda el precio de la oferta: la function
+  /// devuelve `propiedad` también ahí (la bodega trae `id_propiedad`), y tomar
+  /// su `precio_lista` cobraba la unidad en vez del producto.
+  double _precioBase(OfertaDetalle d) => d.esProducto
+      ? (_negocio.precio ?? 0)
+      : (d.propiedad?.precioLista ?? _negocio.precio ?? 0);
 
   @override
   Widget build(BuildContext context) {
@@ -61,11 +75,11 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
 
     return HojaPipeline(
       icono: Icons.description_outlined,
-      titulo: 'Detalle del negocio',
+      titulo: 'Detalle de Oferta',
       subtitulo: [
         _negocio.unidad.isEmpty ? '-' : _negocio.unidad,
         if (_negocio.proyectoNombre.isNotEmpty) _negocio.proyectoNombre,
-      ].join(' · '),
+      ].join(' de '),
       cuerpo: [
         _ficha(context),
         SizedBox(height: t.space.sm),
@@ -199,9 +213,9 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
               SButton.link(
                 label: 'Editar',
                 fullWidth: false,
-                onPressed: () => Navigator.of(context).pop(
-                  const ResultadoDetalle(abrirRazon: true),
-                ),
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(const ResultadoDetalle(abrirRazon: true)),
               ),
           ],
         ),
@@ -231,9 +245,9 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
               label: 'Registrar',
               fullWidth: false,
               size: SButtonSize.sm,
-              onPressed: () => Navigator.of(context).pop(
-                const ResultadoDetalle(abrirRazon: true),
-              ),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop(const ResultadoDetalle(abrirRazon: true)),
             ),
         ],
       ),
@@ -243,8 +257,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
   List<Widget> _contenido(BuildContext context, OfertaDetalle d) {
     final t = context.s;
     final tone = t.color;
-    final oculto = ref.watch(modoPresentacionProvider).activo;
-    final base = d.propiedad?.precioLista ?? _negocio.precio ?? 0;
+    final base = _precioBase(d);
     final adicionales = d.totalAdicionales;
 
     return [
@@ -254,18 +267,19 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Renglon(
-              etiqueta: 'Precio ${d.esProducto ? 'del producto' : 'de la unidad'}',
-              valor: mascara(formatMXN(base), activo: oculto),
+              etiqueta:
+                  'Precio ${d.esProducto ? 'del producto' : 'de la unidad'}',
+              valor: formatMXN(base),
             ),
             if (adicionales > 0) ...[
               _Renglon(
                 etiqueta: 'Productos adicionales',
-                valor: '+ ${mascara(formatMXN(adicionales), activo: oculto)}',
+                valor: '+ ${formatMXN(adicionales)}',
               ),
               Divider(color: tone.borderSoft, height: t.space.md),
               _Renglon(
                 etiqueta: 'Total',
-                valor: mascara(formatMXN(base + adicionales), activo: oculto),
+                valor: formatMXN(base + adicionales),
                 fuerte: true,
               ),
             ],
@@ -275,7 +289,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
       if (d.asociados.isNotEmpty) ...[
         SizedBox(height: t.space.sm),
         SSectionLabel(
-          text: 'Bodegas y estacionamientos',
+          text: 'Productos asociados a esta propiedad',
           icon: Icons.sell_outlined,
         ),
         Wrap(
@@ -286,7 +300,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
               SBadge(
                 label: a.esIncluido
                     ? '${a.nombre} (incluido)'
-                    : '${a.nombre} (${mascara(formatMXN(a.precio), activo: oculto)})',
+                    : '${a.nombre} (${formatMXN(a.precio)})',
                 tone: a.esIncluido ? SBadgeTone.neutral : SBadgeTone.pending,
                 icon: a.tipo == 'bodega'
                     ? Icons.inventory_2_outlined
@@ -304,30 +318,39 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
           ),
       ],
       SizedBox(height: t.space.sm),
-      SSectionLabel(
-        text: 'Esquemas de pago (${d.esquemas.length})',
-        icon: Icons.payments_outlined,
-      ),
-      if (d.esquemas.isEmpty)
-        Text(
-          'No hay esquemas disponibles para esta oferta.',
-          style: t.text.bodySmall.copyWith(color: tone.fgMuted),
-        )
-      else
-        for (final e in d.esquemas) ...[
-          _OpcionEsquema(
-            esquema: e,
-            base: base,
-            oculto: oculto,
-            seleccionado: d.yaTieneEsquema
-                ? e.id == d.idEsquemaSeleccionado
-                : e.id == _esquemaId,
-            bloqueado: d.yaTieneEsquema || !widget.puedeActualizar,
-            onTap: () =>
-                setState(() => _esquemaId = _esquemaId == e.id ? null : e.id),
+      SPressable(
+        onTap: () => setState(() => _esquemasAbiertos = !_esquemasAbiertos),
+        borderRadius: t.radius.mdBorder,
+        child: SSectionLabel(
+          text: 'Esquemas de pago (${d.esquemas.length})',
+          icon: Icons.payments_outlined,
+          trailing: Icon(
+            _esquemasAbiertos ? Icons.expand_less : Icons.expand_more,
+            size: _icono,
+            color: tone.fgMuted,
           ),
-          SizedBox(height: t.space.xxs),
-        ],
+        ),
+      ),
+      if (_esquemasAbiertos)
+        if (d.esquemas.isEmpty)
+          Text(
+            'No hay esquemas disponibles para esta oferta.',
+            style: t.text.bodySmall.copyWith(color: tone.fgMuted),
+          )
+        else
+          for (final e in d.esquemas) ...[
+            _OpcionEsquema(
+              esquema: e,
+              base: base,
+              seleccionado: d.yaTieneEsquema
+                  ? e.id == d.idEsquemaSeleccionado
+                  : e.id == _esquemaId,
+              bloqueado: d.yaTieneEsquema || !widget.puedeActualizar,
+              onTap: () =>
+                  setState(() => _esquemaId = _esquemaId == e.id ? null : e.id),
+            ),
+            SizedBox(height: t.space.xxs),
+          ],
       SizedBox(height: t.space.sm),
       SSectionLabel(text: 'Link del cliente', icon: Icons.link_outlined),
       SCard.outlined(
@@ -354,8 +377,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
                   icon: Icons.copy_outlined,
                   size: SButtonSize.sm,
                   fullWidth: false,
-                  onPressed: () =>
-                      copiarLink(context, d.link.urlCompartible),
+                  onPressed: () => copiarLink(context, d.link.urlCompartible),
                 ),
                 SButton.secondary(
                   label: 'Abrir',
@@ -399,13 +421,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
         label: 'Compartir',
         icon: Icons.ios_share_outlined,
         fullWidth: false,
-        onPressed: d == null
-            ? null
-            : () => compartirLinkCliente(
-                context,
-                url: d.link.urlCompartible,
-                titulo: '${_negocio.folio} · ${_negocio.unidad}',
-              ),
+        onPressed: d == null ? null : () => _compartir(d),
       ),
       if (puedeGuardar)
         SButton(
@@ -417,6 +433,22 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
     ];
   }
 
+  /// Abre los canales de compartir con el mensaje ya armado.
+  Future<void> _compartir(OfertaDetalle d) => mostrarCompartirOferta(
+    context,
+    titulo: '${_negocio.folio} · ${_negocio.unidad}',
+    urlCliente: d.link.vigente ? d.link.url! : '',
+    urlPreview: d.link.urlPreview,
+    mensaje: mensajeDeOferta(
+      url: d.link.urlCompartible,
+      nombreLead: _negocio.lead.nombre,
+      unidad: _negocio.unidad,
+      proyecto: _negocio.proyectoNombre,
+    ),
+    telefono: _negocio.lead.telefono,
+    clavePais: _negocio.lead.clavePaisTelefono,
+  );
+
   Future<void> _guardarEsquema() async {
     final id = _esquemaId;
     if (id == null) return;
@@ -425,10 +457,9 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
       _error = null;
     });
     try {
-      final cambio = await ref.read(pipelineAccionesProvider).elegirEsquema(
-        idOferta: _negocio.idOferta,
-        idEsquema: id,
-      );
+      final cambio = await ref
+          .read(pipelineAccionesProvider)
+          .elegirEsquema(idOferta: _negocio.idOferta, idEsquema: id);
       if (mounted) {
         Navigator.of(
           context,
@@ -449,10 +480,9 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
       _error = null;
     });
     try {
-      await ref.read(pipelineAccionesProvider).generarLink(
-        idOferta: _negocio.idOferta,
-        email: _negocio.lead.email,
-      );
+      await ref
+          .read(pipelineAccionesProvider)
+          .generarLink(idOferta: _negocio.idOferta, email: _negocio.lead.email);
       if (!mounted) return;
       setState(() => _generandoLink = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -472,7 +502,6 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
 class _OpcionEsquema extends StatelessWidget {
   final EsquemaPago esquema;
   final double base;
-  final bool oculto;
   final bool seleccionado;
   final bool bloqueado;
   final VoidCallback onTap;
@@ -480,7 +509,6 @@ class _OpcionEsquema extends StatelessWidget {
   const _OpcionEsquema({
     required this.esquema,
     required this.base,
-    required this.oculto,
     required this.seleccionado,
     required this.bloqueado,
     required this.onTap,
@@ -551,33 +579,21 @@ class _OpcionEsquema extends StatelessWidget {
               if (esquema.porcentajeEnganche > 0)
                 _Importe(
                   etiqueta: 'Enganche',
-                  valor: mascara(
-                    formatMXN(esquema.enganche(base)),
-                    activo: oculto,
-                  ),
+                  valor: formatMXN(esquema.enganche(base)),
                 ),
               if (esquema.porcentajeMensualidades > 0)
                 _Importe(
                   etiqueta: 'Mensualidad',
-                  valor: mascara(
-                    formatMXN(esquema.mensualidad(base)),
-                    activo: oculto,
-                  ),
+                  valor: formatMXN(esquema.mensualidad(base)),
                 ),
               if (esquema.porcentajeEntrega > 0)
                 _Importe(
                   etiqueta: 'Entrega',
-                  valor: mascara(
-                    formatMXN(esquema.entrega(base)),
-                    activo: oculto,
-                  ),
+                  valor: formatMXN(esquema.entrega(base)),
                 ),
               _Importe(
                 etiqueta: 'Precio final',
-                valor: mascara(
-                  formatMXN(esquema.precioFinal(base)),
-                  activo: oculto,
-                ),
+                valor: formatMXN(esquema.precioFinal(base)),
               ),
             ],
           ),

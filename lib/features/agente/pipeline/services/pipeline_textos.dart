@@ -19,6 +19,23 @@ String mascara(String? texto, {required bool activo}) {
   return t.isEmpty ? '-' : t;
 }
 
+/// Mensaje con el que se comparte la oferta (WhatsApp, hoja del sistema).
+/// Mismo armado que el portal web: saludo con el primer nombre del prospecto, la
+/// unidad y el link en su propio renglón.
+String mensajeDeOferta({
+  required String url,
+  String? nombreLead,
+  String unidad = '',
+  String proyecto = '',
+}) {
+  final primer = (nombreLead ?? '').trim().split(' ').first;
+  final donde = [unidad, proyecto].where((s) => s.isNotEmpty).join(' de ');
+  final cuerpo = primer.isEmpty
+      ? 'Aquí está tu oferta digital'
+      : 'Hola $primer, aquí está tu oferta digital';
+  return '$cuerpo${donde.isEmpty ? '' : ' - $donde'}:\n$url';
+}
+
 /// Mensaje para el agente a partir del error. Se lee el CÓDIGO, nunca el status
 /// suelto: el backend responde 503 tanto por pipeline ausente como por catálogo
 /// ausente y la salida para el agente es distinta.
@@ -83,8 +100,9 @@ String tituloDeError(Object error) {
 /// Resultado de fijar el esquema, dicho como pasó de verdad. Un "listo"
 /// genérico esconde el caso en que el plan se guardó pero los acuerdos de la
 /// cuenta quedaron con el esquema anterior.
-String mensajeDeEsquema(CambioEsquema cambio) => switch (cambio
-    .acuerdosRegenerados) {
+String mensajeDeEsquema(
+  CambioEsquema cambio,
+) => switch (cambio.acuerdosRegenerados) {
   true => 'Plan guardado y acuerdos de la cuenta regenerados.',
   false =>
     'Plan guardado, pero los acuerdos de la cuenta no se regeneraron: '
