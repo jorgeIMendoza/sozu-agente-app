@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/esquema_pago_card.dart';
@@ -6,6 +7,7 @@ import 'package:sozu_agente_app/features/agente/inventario/components/galeria_im
 import 'package:sozu_agente_app/features/agente/inventario/components/hoja_inventario.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/unidad_card.dart';
 import 'package:sozu_agente_app/features/agente/inventario/ports/inventario_port.dart';
+import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Detalle de una unidad: galería, contexto, especificaciones, planos, precio de
@@ -48,7 +50,7 @@ Future<void> mostrarDetalleUnidad(
   );
 }
 
-class _DetalleUnidad extends StatefulWidget {
+class _DetalleUnidad extends ConsumerStatefulWidget {
   final Unidad unidad;
   final List<EsquemaPago> esquemas;
   final int mesesEfectivos;
@@ -68,10 +70,10 @@ class _DetalleUnidad extends StatefulWidget {
   });
 
   @override
-  State<_DetalleUnidad> createState() => _DetalleUnidadState();
+  ConsumerState<_DetalleUnidad> createState() => _DetalleUnidadState();
 }
 
-class _DetalleUnidadState extends State<_DetalleUnidad> {
+class _DetalleUnidadState extends ConsumerState<_DetalleUnidad> {
   int? _idEsquema;
 
   EsquemaPago? get _esquema =>
@@ -82,6 +84,10 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
     final t = context.s;
     final tone = t.color;
     final u = widget.unidad;
+    // Los planos se piden aquí y no en la pantalla: el botón solo existe si la
+    // unidad tiene alguno, y eso lo dice el servidor. Ofrecerlo siempre manda al
+    // agente a una pantalla vacía delante del cliente.
+    final planos = ref.watch(planosUnidadProvider(u.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,13 +131,23 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
             children: especificacionesDeUnidad(u),
           ),
         ),
-        SizedBox(height: t.space.sm),
 
-        SButton.secondary(
-          label: 'Ver planos',
-          icon: Icons.architecture_outlined,
-          onPressed: widget.onVerPlanos,
-        ),
+        if (planos.isLoading) ...[
+          SizedBox(height: t.space.sm),
+          SButton.secondary(
+            label: 'Ver planos',
+            icon: Icons.architecture_outlined,
+            loading: true,
+            onPressed: null,
+          ),
+        ] else if (planos.valueOrNull?.vacio == false) ...[
+          SizedBox(height: t.space.sm),
+          SButton.secondary(
+            label: 'Ver planos',
+            icon: Icons.architecture_outlined,
+            onPressed: widget.onVerPlanos,
+          ),
+        ],
 
         if (u.precioLista > 0) ...[
           SizedBox(height: t.space.sm),
@@ -174,9 +190,8 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
               precioLista: u.precioLista,
               mesesEfectivos: widget.mesesEfectivos,
               seleccionado: _idEsquema == e.id,
-              onSeleccionar: () => setState(
-                () => _idEsquema = _idEsquema == e.id ? null : e.id,
-              ),
+              onSeleccionar: () =>
+                  setState(() => _idEsquema = _idEsquema == e.id ? null : e.id),
             ),
             SizedBox(height: t.space.xs),
           ],

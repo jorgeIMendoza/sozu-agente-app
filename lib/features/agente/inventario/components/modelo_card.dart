@@ -41,10 +41,7 @@ class ModeloCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          CarruselImagenes(
-            imagenes: m.multimedia,
-            onTocar: onVerGaleria,
-          ),
+          CarruselImagenes(imagenes: m.multimedia, onTocar: onVerGaleria),
           Padding(
             padding: EdgeInsets.all(t.space.sm),
             child: Column(
@@ -107,7 +104,7 @@ class ModeloCard extends StatelessWidget {
                 if (onVerUnidades != null) ...[
                   SizedBox(height: t.space.xs),
                   SButton.secondary(
-                    label: 'Ver ${m.disponibles} disponibles',
+                    label: 'Ver inventario',
                     size: SButtonSize.sm,
                     isNavigation: true,
                     onPressed: onVerUnidades,

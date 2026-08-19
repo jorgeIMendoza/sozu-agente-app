@@ -6,6 +6,18 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/hoja_inventario.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
+/// Canal por el que se compartió el desarrollo. Los valores son los que manda
+/// el portal web como `plataforma`; [nativo] es el único que no existe allá,
+/// porque allá no hay hoja del sistema.
+abstract final class PlataformaCompartir {
+  static const web = 'web';
+  static const whatsapp = 'whatsapp';
+  static const facebook = 'facebook';
+  static const correo = 'email';
+  static const copiar = 'copy';
+  static const nativo = 'nativo';
+}
+
 /// Compartir un desarrollo con el cliente: su ficha pública en sozu.com.
 ///
 /// Es la única salida del inventario hacia afuera del app, y siempre comparte la
@@ -16,6 +28,10 @@ Future<void> mostrarCompartirDesarrollo(
   required String nombre,
   required String urlPublica,
   String? ubicacion,
+
+  /// Avisa el canal elegido (`PlataformaCompartir.*`). La telemetría la manda
+  /// la pantalla: aquí no se leen providers.
+  void Function(String plataforma)? onPlataforma,
 }) {
   final mensaje = [
     nombre,
@@ -31,6 +47,7 @@ Future<void> mostrarCompartirDesarrollo(
       nombre: nombre,
       urlPublica: urlPublica,
       mensaje: mensaje,
+      onPlataforma: onPlataforma,
     ),
   );
 }
@@ -39,16 +56,19 @@ class _OpcionesCompartir extends StatelessWidget {
   final String nombre;
   final String urlPublica;
   final String mensaje;
+  final void Function(String plataforma)? onPlataforma;
 
   const _OpcionesCompartir({
     required this.nombre,
     required this.urlPublica,
     required this.mensaje,
+    this.onPlataforma,
   });
 
   /// Abre una liga externa y cierra la hoja. El `messenger` y el `navigator` se
   /// toman ANTES del await: después de él este contexto puede estar desmontado.
-  Future<void> _abrir(BuildContext context, Uri uri) async {
+  Future<void> _abrir(BuildContext context, String plataforma, Uri uri) async {
+    onPlataforma?.call(plataforma);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final ok = await launchUrl(
@@ -74,29 +94,59 @@ class _OpcionesCompartir extends StatelessWidget {
           label: 'Ver página web',
           icon: Icons.public,
           isNavigation: true,
-          onPressed: () => _abrir(context, Uri.parse(urlPublica)),
-        ),
-        SizedBox(height: t.space.xs),
-        SButton.secondary(
-          label: 'Enviar por WhatsApp',
-          icon: Icons.chat_outlined,
-          onPressed: () => _abrir(
-            context,
-            Uri.parse('https://wa.me/?text=${Uri.encodeComponent(mensaje)}'),
-          ),
+          onPressed: () =>
+              _abrir(context, PlataformaCompartir.web, Uri.parse(urlPublica)),
         ),
         SizedBox(height: t.space.xs),
         Row(
           children: [
             Expanded(
               child: SButton.secondary(
-                label: 'Compartir',
-                icon: Icons.ios_share,
-                onPressed: () async {
-                  final navigator = Navigator.of(context);
-                  await Share.share(mensaje, subject: nombre);
-                  if (navigator.canPop()) navigator.pop();
-                },
+                label: 'WhatsApp',
+                icon: Icons.chat_outlined,
+                onPressed: () => _abrir(
+                  context,
+                  PlataformaCompartir.whatsapp,
+                  Uri.parse(
+                    'https://wa.me/?text=${Uri.encodeComponent(mensaje)}',
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: t.space.xs),
+            Expanded(
+              child: SButton.secondary(
+                label: 'Facebook',
+                icon: Icons.thumb_up_outlined,
+                onPressed: () => _abrir(
+                  context,
+                  PlataformaCompartir.facebook,
+                  Uri.parse(
+                    'https://www.facebook.com/sharer/sharer.php'
+                    '?u=${Uri.encodeComponent(urlPublica)}',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: t.space.xs),
+        Row(
+          children: [
+            Expanded(
+              child: SButton.secondary(
+                label: 'Correo',
+                icon: Icons.mail_outline,
+                // `mailto` con asunto y cuerpo ya armados: el agente solo pone
+                // el destinatario en su cliente de correo.
+                onPressed: () => _abrir(
+                  context,
+                  PlataformaCompartir.correo,
+                  Uri.parse(
+                    'mailto:?subject=${Uri.encodeComponent(nombre)}'
+                    '&body=${Uri.encodeComponent(mensaje)}',
+                  ),
+                ),
               ),
             ),
             SizedBox(width: t.space.xs),
@@ -105,6 +155,7 @@ class _OpcionesCompartir extends StatelessWidget {
                 label: 'Copiar liga',
                 icon: Icons.link,
                 onPressed: () async {
+                  onPlataforma?.call(PlataformaCompartir.copiar);
                   final messenger = ScaffoldMessenger.of(context);
                   final navigator = Navigator.of(context);
                   await Clipboard.setData(ClipboardData(text: urlPublica));
@@ -118,6 +169,17 @@ class _OpcionesCompartir extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        SizedBox(height: t.space.xs),
+        SButton.ghost(
+          label: 'Compartir con otra app',
+          icon: Icons.ios_share,
+          onPressed: () async {
+            onPlataforma?.call(PlataformaCompartir.nativo);
+            final navigator = Navigator.of(context);
+            await Share.share(mensaje, subject: nombre);
+            if (navigator.canPop()) navigator.pop();
+          },
         ),
         SizedBox(height: t.space.sm),
         Text(
