@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
+import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_aviso.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_fila_seccion.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hero_expediente.dart';
@@ -255,7 +256,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
         !activacion.puedeRecibirComisiones;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil')),
+      appBar: const PortalTopBar(vista: VistaAgente.perfil),
       // El scroll envuelve al limitador de ancho, NO al revés: al revés la
       // rueda del ratón solo mueve la columna central y en los laterales la
       // página no responde (ver AdminScrollArea).
