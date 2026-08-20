@@ -382,6 +382,7 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
         ),
         telefono: n.lead.telefono,
         clavePais: n.lead.clavePaisTelefono,
+        email: n.lead.email,
       ),
       abrirLink: (n) => abrirLinkCliente(context, n.urlCliente),
       registrarRazon: puedeRazon

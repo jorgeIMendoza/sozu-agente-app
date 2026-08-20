@@ -351,56 +351,62 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
             ),
             SizedBox(height: t.space.xxs),
           ],
-      SizedBox(height: t.space.sm),
-      SSectionLabel(text: 'Link del cliente', icon: Icons.link_outlined),
-      SCard.outlined(
-        padding: EdgeInsets.all(t.space.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              d.link.vigente
-                  ? d.link.url!
-                  : 'Esta oferta no tiene link de cliente: la vista previa sirve '
-                        'para mostrarla, no para apartar.',
-              style: t.text.caption.copyWith(
-                color: d.link.vigente ? tone.fg : tone.fgMuted,
+      // Una oferta de PRODUCTO (bodega, cajón) no tiene link de cliente propio:
+      // el apartado va por la oferta de su propiedad. La web esconde la sección
+      // completa y ni consulta el link (`!isProducto`), así que ofrecer aquí
+      // "Generar link" prometía algo que no existe.
+      if (!d.esProducto) ...[
+        SizedBox(height: t.space.sm),
+        SSectionLabel(text: 'Link del cliente', icon: Icons.link_outlined),
+        SCard.outlined(
+          padding: EdgeInsets.all(t.space.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                d.link.vigente
+                    ? d.link.url!
+                    : 'Esta oferta no tiene link de cliente: la vista previa sirve '
+                          'para mostrarla, no para apartar.',
+                style: t.text.caption.copyWith(
+                  color: d.link.vigente ? tone.fg : tone.fgMuted,
+                ),
               ),
-            ),
-            SizedBox(height: t.space.xs),
-            Wrap(
-              spacing: t.space.xs,
-              runSpacing: t.space.xxs,
-              children: [
-                SButton.secondary(
-                  label: 'Copiar',
-                  icon: Icons.copy_outlined,
-                  size: SButtonSize.sm,
-                  fullWidth: false,
-                  onPressed: () => copiarLink(context, d.link.urlCompartible),
-                ),
-                SButton.secondary(
-                  label: 'Abrir',
-                  icon: Icons.open_in_new,
-                  size: SButtonSize.sm,
-                  fullWidth: false,
-                  onPressed: () =>
-                      abrirLinkCliente(context, d.link.urlCompartible),
-                ),
-                if (!d.link.vigente && widget.puedeActualizar)
+              SizedBox(height: t.space.xs),
+              Wrap(
+                spacing: t.space.xs,
+                runSpacing: t.space.xxs,
+                children: [
                   SButton.secondary(
-                    label: 'Generar link',
-                    icon: Icons.add_link,
+                    label: 'Copiar',
+                    icon: Icons.copy_outlined,
                     size: SButtonSize.sm,
                     fullWidth: false,
-                    loading: _generandoLink,
-                    onPressed: _generarLink,
+                    onPressed: () => copiarLink(context, d.link.urlCompartible),
                   ),
-              ],
-            ),
-          ],
+                  SButton.secondary(
+                    label: 'Abrir',
+                    icon: Icons.open_in_new,
+                    size: SButtonSize.sm,
+                    fullWidth: false,
+                    onPressed: () =>
+                        abrirLinkCliente(context, d.link.urlCompartible),
+                  ),
+                  if (!d.link.vigente && widget.puedeActualizar)
+                    SButton.secondary(
+                      label: 'Generar link',
+                      icon: Icons.add_link,
+                      size: SButtonSize.sm,
+                      fullWidth: false,
+                      loading: _generandoLink,
+                      onPressed: _generarLink,
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     ];
   }
 
@@ -447,6 +453,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
     ),
     telefono: _negocio.lead.telefono,
     clavePais: _negocio.lead.clavePaisTelefono,
+    email: _negocio.lead.email,
   );
 
   Future<void> _guardarEsquema() async {

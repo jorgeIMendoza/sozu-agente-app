@@ -5,6 +5,7 @@ import 'package:sozu_agente_app/features/agente/perfil/services/validaciones_del
 /// igual, así que lo único que cambia es cuándo se avisa. Los casos de abajo son
 /// los que antes pasaban con solo contar 18 caracteres.
 void main() {
+  _gateDeLaCarta();
   group('curpValido', () {
     test('acepta un CURP con el formato oficial', () {
       expect(curpValido('HEGA850312HDFRNL09'), isTrue);
@@ -33,5 +34,58 @@ void main() {
       expect(curpValido('HEGA850312HDFRNL099'), isFalse);
       expect(curpValido(''), isFalse);
     });
+  });
+}
+
+/// La Carta de comercialización es un documento LEGAL y `firma_carta_crear` no
+/// comprueba la identidad, así que este gate es el único que existe: si se
+/// afloja, se puede firmar sin haber acreditado quién eres.
+void _gateDeLaCarta() {
+  group('motivoParaNoFirmarCarta', () {
+    test('con todo en orden no hay motivo: se puede firmar', () {
+      expect(
+        motivoParaNoFirmarCarta(
+          puedeEditar: true,
+          notaSoloLectura: null,
+          identidadValidada: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('sin identificación validada NO se firma, y se dice por qué', () {
+      final motivo = motivoParaNoFirmarCarta(
+        puedeEditar: true,
+        notaSoloLectura: null,
+        identidadValidada: false,
+      );
+      expect(motivo, isNotNull);
+      expect(motivo, contains('identificación validada'));
+    });
+
+    test('la nota del dependiente gana: la carta no le aplica', () {
+      expect(
+        motivoParaNoFirmarCarta(
+          puedeEditar: true,
+          notaSoloLectura: 'Solo aplica al agente independiente',
+          identidadValidada: true,
+        ),
+        'Solo aplica al agente independiente',
+      );
+    });
+
+    test(
+      'sin permiso de edición tampoco, aunque la identidad esté validada',
+      () {
+        expect(
+          motivoParaNoFirmarCarta(
+            puedeEditar: false,
+            notaSoloLectura: null,
+            identidadValidada: true,
+          ),
+          isNotNull,
+        );
+      },
+    );
   });
 }

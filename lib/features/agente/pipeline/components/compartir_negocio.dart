@@ -47,6 +47,7 @@ Future<void> mostrarCompartirOferta(
   required String mensaje,
   String? telefono,
   String? clavePais,
+  String? email,
 }) {
   return mostrarHojaPipeline<void>(
     context,
@@ -57,6 +58,7 @@ Future<void> mostrarCompartirOferta(
       mensaje: mensaje,
       telefono: telefono,
       clavePais: clavePais,
+      email: email,
     ),
   );
 }
@@ -68,6 +70,7 @@ class _CompartirOfertaHoja extends StatelessWidget {
   final String mensaje;
   final String? telefono;
   final String? clavePais;
+  final String? email;
 
   const _CompartirOfertaHoja({
     required this.titulo,
@@ -76,6 +79,7 @@ class _CompartirOfertaHoja extends StatelessWidget {
     required this.mensaje,
     this.telefono,
     this.clavePais,
+    this.email,
   });
 
   @override
@@ -135,6 +139,22 @@ class _CompartirOfertaHoja extends StatelessWidget {
               abrirLinkCliente(context, hayCliente ? urlCliente : urlPreview),
         ),
         SizedBox(height: t.space.xs),
+        // Respaldo de correo: abre el cliente de correo del dispositivo con
+        // el asunto y el cuerpo ya escritos. NO es el envío desde la
+        // plataforma (eso necesita backend y no existe todavía), pero es lo
+        // que la web usa cuando no puede mandarlo ella, así que el canal
+        // deja de estar ausente.
+        SButton.secondary(
+          label: 'Correo',
+          icon: Icons.mail_outline,
+          fullWidth: true,
+          onPressed: () => compartirPorCorreo(
+            context,
+            asunto: titulo,
+            cuerpo: mensaje,
+            email: email,
+          ),
+        ),
         SButton.ghost(
           label: 'Más opciones del sistema',
           icon: Icons.more_horiz,
@@ -147,8 +167,32 @@ class _CompartirOfertaHoja extends StatelessWidget {
         ),
       ],
       nota:
-          'Mandar la oferta por correo y descargar su PDF todavía se hacen '
-          'desde el portal web.',
+          'El correo se abre en tu app de correo. Mandarlo desde la '
+          'plataforma y descargar el PDF de la oferta todavía se hacen desde '
+          'el portal web.',
+    );
+  }
+}
+
+/// Abre el cliente de correo del dispositivo con el asunto y el cuerpo listos.
+///
+/// Sin [email] abre el redactor sin destinatario, para que el agente lo elija.
+/// Es el respaldo que usa la web cuando no puede enviar desde la plataforma.
+Future<void> compartirPorCorreo(
+  BuildContext context, {
+  required String asunto,
+  required String cuerpo,
+  String? email,
+}) async {
+  final destino = Uri(
+    scheme: 'mailto',
+    path: (email ?? '').trim(),
+    queryParameters: {'subject': asunto, 'body': cuerpo},
+  );
+  final abrio = await launchUrl(destino, mode: LaunchMode.externalApplication);
+  if (!abrio && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No pudimos abrir tu app de correo.')),
     );
   }
 }

@@ -11,6 +11,7 @@ import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvist
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
+import 'package:sozu_agente_app/features/agente/perfil/services/validaciones_del_perfil.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
@@ -113,6 +114,13 @@ class _PerfilExpedienteScreenState
             }
 
             final puedeEntregar = permisos.actualizar && perfil.puedeEditar;
+            final motivoSinFirma = motivoParaNoFirmarCarta(
+              puedeEditar: puedeEntregar,
+              notaSoloLectura: notaCarta,
+              identidadValidada:
+                  perfil.expediente.documento('identidad')?.estado ==
+                  EstadoDocumento.validado,
+            );
 
             // Notas de solo lectura que el backend manda para el agente
             // dependiente. Se agrupan y se dicen UNA vez arriba: repetir el
@@ -166,10 +174,22 @@ class _PerfilExpedienteScreenState
                 ],
                 // La carta no se sube: se firma, y su estado vive fuera del
                 // perfil (con el proveedor de firma).
+                //
+                // Sin identificación VALIDADA no se firma: la web exige
+                // `identidadVerificada` y el servidor no lo comprueba en
+                // `firma_carta_crear`, así que si el frontend no lo pide, nadie
+                // lo pide y se puede firmar un documento legal sin haber
+                // acreditado quién eres.
+                //
+                // Es un proxy, no el gate exacto: la web mira cada documento de
+                // identidad y aquí llega el estatus ya agregado del expediente.
+                // Se cierra cuando `agente-perfil` exponga
+                // `identidad_verificada` y lo exija del lado servidor.
                 if (perfil.expediente.documento('carta') != null) ...[
                   SizedBox(height: t.space.sm),
                   FirmaDeCartaPanel(
-                    habilitado: puedeEntregar && notaCarta == null,
+                    habilitado: motivoSinFirma == null,
+                    motivoBloqueo: motivoSinFirma,
                   ),
                 ],
               ],
@@ -363,7 +383,15 @@ class _AvisoIdentidad extends StatelessWidget {
 class FirmaDeCartaPanel extends ConsumerStatefulWidget {
   final bool habilitado;
 
-  const FirmaDeCartaPanel({super.key, this.habilitado = true});
+  /// Por qué no se puede firmar. Un botón apagado sin motivo se lee como una
+  /// falla de la app.
+  final String? motivoBloqueo;
+
+  const FirmaDeCartaPanel({
+    super.key,
+    this.habilitado = true,
+    this.motivoBloqueo,
+  });
 
   @override
   ConsumerState<FirmaDeCartaPanel> createState() => _FirmaDeCartaPanelState();
@@ -538,6 +566,13 @@ class _FirmaDeCartaPanelState extends ConsumerState<FirmaDeCartaPanel> {
             Text(
               _error!,
               style: t.text.caption.copyWith(color: t.color.danger),
+            ),
+          ],
+          if (!widget.habilitado && widget.motivoBloqueo != null) ...[
+            SizedBox(height: t.space.xs),
+            Text(
+              widget.motivoBloqueo!,
+              style: t.text.caption.copyWith(color: t.color.warningFg),
             ),
           ],
           SizedBox(height: t.space.sm),
