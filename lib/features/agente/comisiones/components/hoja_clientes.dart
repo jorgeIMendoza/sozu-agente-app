@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
+/// Porcentaje con decimales SOLO si los tiene, como lo imprime la web.
+/// Redondear a entero hacía que dos copropietarios al 33.33% se leyeran como
+/// 33% + 33% = 66%, y pareciera que falta un tercio de la operación.
+String _porcentaje(double valor) =>
+    valor.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+
 /// Compradores de una operación en copropiedad.
 ///
 /// Se abre desde la fila en vez de listarlos ahí: una operación a nombre de
@@ -79,7 +85,7 @@ Future<void> mostrarClientesComision(
                   ),
                   SizedBox(width: t.space.xs),
                   SBadge(
-                    label: '${cliente.porcentaje.toStringAsFixed(0)}%',
+                    label: '${_porcentaje(cliente.porcentaje)}%',
                     size: SBadgeSize.sm,
                   ),
                 ],

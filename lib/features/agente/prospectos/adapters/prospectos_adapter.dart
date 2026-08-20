@@ -45,6 +45,24 @@ class ProspectosAdapter implements ProspectosPort {
         await _accion('detalle', {'id_persona': idPersona}),
       );
 
+  /// El servidor recorta a propósito el correo y el teléfono de la persona
+  /// encontrada; aquí no se reconstruyen ni se guardan.
+  @override
+  Future<CoincidenciasDeProspecto> buscarExistente({
+    String? email,
+    String? telefono,
+    int? excluirIdPersona,
+  }) async {
+    final correo = (email ?? '').trim();
+    final tel = (telefono ?? '').trim();
+    final res = await _accion('buscar_existente', {
+      if (correo.isNotEmpty) 'email': correo,
+      if (tel.isNotEmpty) 'telefono': tel,
+      if (excluirIdPersona != null) 'excluir_id_persona': excluirIdPersona,
+    });
+    return CoincidenciasDeProspecto.fromJson(res);
+  }
+
   @override
   Future<int> crear({
     required DatosProspecto datos,
@@ -104,8 +122,13 @@ class ProspectosAdapter implements ProspectosPort {
   }
 
   /// El servicio de prospectos no publica el catálogo de desarrollos, así que
-  /// se toma del inventario del agente, que ya lo devuelve filtrado por sus
-  /// accesos. Es la misma lista que la web ofrece en el alta del prospecto.
+  /// se toma del inventario del agente, ya filtrado por sus accesos.
+  ///
+  /// NO es la misma lista que la web: el inventario solo devuelve desarrollos
+  /// con `publicar = true` y con unidades cargadas, mientras la web ofrece todo
+  /// proyecto activo con acceso. Un desarrollo accesible pero despublicado, o
+  /// sin inventario, se puede ligar desde la web y desde aquí no. Se cierra
+  /// cuando `agente-prospectos` publique su propio catálogo.
   @override
   Future<List<DesarrolloVinculable>> desarrollosVinculables() async {
     final res = await _fn.call(
@@ -152,15 +175,17 @@ class ProspectosAdapter implements ProspectosPort {
   Future<void> editarNota({
     required int idNota,
     required String texto,
+    String? cuerpoConFormato,
     List<AdjuntoNota> adjuntos = const [],
   }) async {
     // La edición REEMPLAZA el contenido y los adjuntos viven dentro de él, así
     // que se vuelven a escribir sus enlaces. El servidor los re-firma al leer
     // (extrae bucket y ruta de la URL guardada), por eso conservar el enlace
     // temporal no rompe el archivo.
+    final cuerpo = cuerpoConFormato ?? _parrafos(texto);
     await _accion('nota_editar', {
       'id_nota': idNota,
-      'contenido': '${_parrafos(texto)}${_htmlDeAdjuntos(adjuntos)}',
+      'contenido': '$cuerpo${_htmlDeAdjuntos(adjuntos)}',
     });
   }
 

@@ -16,6 +16,9 @@ enum SBadgeTone {
   /// Vencido, cancelado, en mora, rechazado.
   negative,
 
+  /// Agendado, programado, informativo: un hecho que aún no es un resultado.
+  info,
+
   /// Sin carga semántica: tipo, categoría, conteo.
   neutral,
 }
@@ -135,6 +138,7 @@ class _SBadgeStyle {
       SBadgeTone.positive => (c.primarySoftStrong, c.primaryHover),
       SBadgeTone.pending => (c.warningSoft, c.warningFg),
       SBadgeTone.negative => (c.dangerSoft, c.danger),
+      SBadgeTone.info => (c.infoSoft, c.infoFg),
       SBadgeTone.neutral => (c.surfaceAlt, c.fgMuted),
     };
 

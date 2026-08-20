@@ -5,10 +5,6 @@ import 'package:sozu_agente_app/features/agente/home/ports/inicio_port.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Distintivo de la cita como insignia del sistema.
-///
-/// `TonoCita.info` ("Agendada") cae en el tono neutro porque el design system no
-/// tiene un tono informativo: para que no se confunda con "Sin confirmar", que
-/// también es neutro, cada estado lleva su icono.
 ({SBadgeTone tono, IconData icono}) insigniaDeCita(TonoCita tono) =>
     switch (tono) {
       TonoCita.exito => (
@@ -20,7 +16,7 @@ import 'package:sozu_agente_app/ui/ui.dart';
         icono: Icons.cancel_outlined,
       ),
       TonoCita.info => (
-        tono: SBadgeTone.neutral,
+        tono: SBadgeTone.info,
         icono: Icons.event_available_outlined,
       ),
       TonoCita.neutro => (

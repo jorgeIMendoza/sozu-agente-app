@@ -8,6 +8,7 @@ import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/archivos_del_perfil.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -37,8 +38,12 @@ Future<String?> cargarDocumentoDelExpediente(
     context,
     titulo: esIdentificacion ? 'Identificación oficial' : documento.nombre,
     descripcion: esIdentificacion
+        // El aviso de reemplazo es el de la web: con una identificación basta, y
+        // si sustituye a la anterior la previa deja de contar. Sin decirlo, el
+        // agente cree que subió dos y no sabe cuál vale.
         ? 'Elige con qué te identificas, adjunta el archivo y revísalo antes '
-              'de guardar'
+              'de guardar. Con una identificación es suficiente: si sustituye a '
+              'una anterior, la previa se marca como reemplazada.'
         : 'Adjunta el archivo y revísalo antes de guardar',
     // La identidad admite dos formas del MISMO requisito y solo una queda
     // vigente: subir las dos deja dos identificaciones y verificación no sabe
@@ -49,7 +54,10 @@ Future<String?> cargarDocumentoDelExpediente(
               value: TiposDocumento.ineCompleto,
               label: 'INE (frente y reverso en un solo archivo)',
             ),
-            (value: TiposDocumento.pasaporte, label: 'Pasaporte (página de datos)'),
+            (
+              value: TiposDocumento.pasaporte,
+              label: 'Pasaporte (página de datos)',
+            ),
           ]
         : const [],
     tipoId: esIdentificacion
@@ -78,22 +86,23 @@ Future<String?> cargarDocumentoDelExpediente(
   if (resultado == null) return null;
 
   try {
-    final estado = await ref.read(perfilAgentePortProvider).subirDocumento(
-      tipo: resultado.tipoId,
-      base64: base64Encode(resultado.bytes),
-      nombre: resultado.nombre,
-      contentType: contentTypeDe(resultado.nombre),
-      // NUNCA se pide "validado" desde el app. El portal web lo hace solo cuando
-      // pudo leer el PDF original del SAT (sello + frases + fecha ≤ 3 meses) con
-      // pdf.js; aquí no hay forma equivalente de comprobarlo, y marcar validado
-      // sin comprobar dejaría datos fiscales sin respaldo en las facturas.
-      validado: false,
-      datos: esConstancia ? _datosDesde(resultado.campos) : null,
-    );
+    final veredicto = await ref
+        .read(perfilAgentePortProvider)
+        .subirDocumento(
+          tipo: resultado.tipoId,
+          base64: base64Encode(resultado.bytes),
+          nombre: resultado.nombre,
+          contentType: contentTypeDe(resultado.nombre),
+          datos: esConstancia ? _datosDesde(resultado.campos) : null,
+        );
+    // El porcentaje de activación y el aviso de cobros dependen de esto: sin
+    // invalidar, el agente entrega su Constancia y las pantallas siguen
+    // diciendo que le falta. El avance vive en DOS lados (el perfil y el
+    // onboarding de la sesión), y el segundo es el que decide si ya puede ver
+    // sus comisiones.
     ref.invalidate(perfilAgenteProvider);
-    return estado == EstadoDocumento.validado
-        ? 'Documento validado.'
-        : 'Documento enviado. Queda pendiente de validación.';
+    ref.invalidate(sesionProvider);
+    return mensajeDeCarga(veredicto);
   } on ApiError catch (e) {
     return mensajeDeError(e);
   } catch (_) {
@@ -120,51 +129,40 @@ List<String> _condiciones(DocumentoDelExpediente documento) {
   ];
 }
 
-/// Datos fiscales que el agente confirma al entregar su Constancia.
+/// Datos fiscales que el agente PUEDE confirmar al entregar su Constancia.
 ///
-/// Salen vacíos: el app NO lee el PDF. En el portal web pdf.js extrae el texto y
-/// los precarga, y aquí no hay equivalente que valga la pena mantener, así que se
-/// le piden y se le advierte para qué son. Los que bloquean son los mismos del
-/// back office (RFC, régimen, calle, colonia y CP); los números exterior e
-/// interior no.
+/// Ninguno es obligatorio: si el archivo es el PDF original del SAT, el servidor
+/// lo lee y los registra solos. Se piden por el caso que el servidor no puede
+/// resolver (un escaneo, una foto dentro de un PDF), y porque lo que el agente
+/// escriba GANA sobre lo extraído: el backend solo escribe lo que leyó donde el
+/// cuerpo no traiga ya el campo.
 SDocAnalisis _camposDeLaConstancia(List<OpcionDeCatalogo> regimenes) => (
   campos: [
-    const SDocFieldSpec(
-      key: 'rfc',
-      label: 'RFC',
-      requerido: true,
-      kind: SDocFieldKind.rfc,
-    ),
-    const SDocFieldSpec(
-      key: 'nombre',
-      label: 'Nombre / Razón social',
-      requerido: true,
-    ),
+    const SDocFieldSpec(key: 'rfc', label: 'RFC', kind: SDocFieldKind.rfc),
+    const SDocFieldSpec(key: 'curp', label: 'CURP', kind: SDocFieldKind.curp),
+    const SDocFieldSpec(key: 'nombre', label: 'Nombre / Razón social'),
     SDocFieldSpec(
       key: 'regimen',
       label: 'Régimen fiscal',
-      requerido: true,
       kind: SDocFieldKind.catalogo,
-      opciones: [
-        for (final r in regimenes) (id: r.valor, nombre: r.etiqueta),
-      ],
+      opciones: [for (final r in regimenes) (id: r.valor, nombre: r.etiqueta)],
     ),
     const SDocFieldSpec(
       key: 'codigo_postal',
       label: 'Código postal',
-      requerido: true,
       kind: SDocFieldKind.cp,
     ),
-    const SDocFieldSpec(key: 'calle', label: 'Calle', requerido: true),
+    const SDocFieldSpec(key: 'calle', label: 'Calle'),
     const SDocFieldSpec(key: 'num_ext', label: 'Núm. exterior'),
     const SDocFieldSpec(key: 'num_int', label: 'Núm. interior'),
-    const SDocFieldSpec(key: 'colonia', label: 'Colonia', requerido: true),
+    const SDocFieldSpec(key: 'colonia', label: 'Colonia'),
   ],
   aviso:
-      'Captura los datos tal como aparecen en tu Constancia: con ellos '
-      'facturas tus comisiones a SOZU, así que tienen que coincidir con el '
-      'SAT. El documento queda pendiente de validación manual.',
-  tono: SDocTone.warning,
+      'Si adjuntas el PDF original que descargas del SAT, lo leemos por ti y '
+      'estos datos se registran solos: puedes dejarlos vacíos. Captúralos solo '
+      'si tu archivo es un escaneo, y tal como aparecen en la Constancia: lo '
+      'que escribas aquí gana sobre lo que diga el documento.',
+  tono: SDocTone.info,
   rechazo: null,
 );
 
@@ -176,6 +174,7 @@ DatosDeConstancia _datosDesde(Map<String, String> campos) {
 
   return DatosDeConstancia(
     rfc: v('rfc')?.toUpperCase(),
+    curp: v('curp')?.toUpperCase(),
     nombreLegal: v('nombre'),
     regimen: v('regimen'),
     codigoPostal: v('codigo_postal'),

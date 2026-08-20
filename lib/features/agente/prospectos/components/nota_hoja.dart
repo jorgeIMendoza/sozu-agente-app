@@ -4,9 +4,12 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:sozu_agente_app/core/open_media.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/components/nota_html_vista.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_modal.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/services/nota_html.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/services/prospectos_reglas.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -23,26 +26,33 @@ Future<bool?> escribirNota(
   _HojaNota(idPersona: idPersona, idRelacion: idRelacion),
 );
 
-/// Abre una nota propia para editarla o borrarla. Devuelve `true` si cambió algo.
+/// Abre una nota propia. Con [soloLectura] se ve completa y con formato (el
+/// "Ver detalle" de la web), y desde ahí se puede pasar a editarla o borrarla.
+/// Devuelve `true` si cambió algo.
 Future<bool?> abrirNota(
   BuildContext context, {
   required int idNota,
   required String texto,
+  String html = '',
   List<AdjuntoNota> adjuntos = const [],
+  bool soloLectura = false,
 }) => mostrarHojaProspecto<bool>(
   context,
-  _HojaNota(idNota: idNota, textoInicial: texto, adjuntosExistentes: adjuntos),
+  _HojaNota(
+    idNota: idNota,
+    textoInicial: texto,
+    html: html,
+    adjuntosExistentes: adjuntos,
+    soloLectura: soloLectura,
+  ),
 );
 
-/// Editor de nota interna.
+/// Nota interna: se lee con su formato y se edita como texto plano.
 ///
-/// En la web la nota es HTML enriquecido; aquí es TEXTO PLANO con archivos
-/// pegados. No se mete un editor de HTML ni un visor de HTML como dependencia
-/// nueva por dos razones: el 99% de las notas del portal son un párrafo y una
-/// foto, y un visor de HTML de terceros en una pantalla que muestra datos de
-/// clientes es superficie de ataque sin necesidad. Lo que ya venía escrito en
-/// HTML se lee como texto (el servidor manda su versión plana) y sus archivos
-/// siguen listados aparte.
+/// El editor es de TEXTO PLANO a propósito: no se mete un editor de HTML como
+/// dependencia nueva. Lo que sí se respeta es lo ya escrito en el portal web: si
+/// el texto no se toca, el contenido con formato se manda de vuelta tal cual, y
+/// si se toca, la hoja avisa que se guardará como texto plano.
 class _HojaNota extends ConsumerStatefulWidget {
   /// Prospecto al que se le agrega la nota; null cuando se edita una existente.
   final int? idPersona;
@@ -53,14 +63,23 @@ class _HojaNota extends ConsumerStatefulWidget {
   final int? idNota;
 
   final String textoInicial;
+
+  /// Contenido con formato de la nota existente, con sus URLs ya firmadas.
+  final String html;
+
   final List<AdjuntoNota> adjuntosExistentes;
+
+  /// Arranca en modo lectura (nota larga abierta desde "Ver detalle").
+  final bool soloLectura;
 
   const _HojaNota({
     this.idPersona,
     this.idRelacion,
     this.idNota,
     this.textoInicial = '',
+    this.html = '',
     this.adjuntosExistentes = const [],
+    this.soloLectura = false,
   });
 
   @override
@@ -69,16 +88,26 @@ class _HojaNota extends ConsumerStatefulWidget {
 
 class _HojaNotaState extends ConsumerState<_HojaNota> {
   late final TextEditingController _texto;
+
+  /// Archivos que la nota conserva. Quitar uno de aquí lo desprende al guardar.
+  late final List<AdjuntoNota> _adjuntos;
+
   final List<AdjuntoNuevo> _nuevos = [];
+  late bool _soloLectura;
   bool _trabajando = false;
   String? _error;
 
   bool get _esEdicion => widget.idNota != null;
 
+  /// El texto ya no es el que traía la nota, así que su formato se reescribe.
+  bool get _textoCambio => _texto.text.trim() != widget.textoInicial.trim();
+
   @override
   void initState() {
     super.initState();
     _texto = TextEditingController(text: widget.textoInicial);
+    _adjuntos = List.of(widget.adjuntosExistentes);
+    _soloLectura = widget.soloLectura;
   }
 
   @override
@@ -90,7 +119,7 @@ class _HojaNotaState extends ConsumerState<_HojaNota> {
   bool get _hayContenido =>
       _texto.text.trim().isNotEmpty ||
       _nuevos.isNotEmpty ||
-      widget.adjuntosExistentes.isNotEmpty;
+      _adjuntos.isNotEmpty;
 
   Future<void> _adjuntar() async {
     const grupo = XTypeGroup(
@@ -129,10 +158,14 @@ class _HojaNotaState extends ConsumerState<_HojaNota> {
     try {
       final port = ref.read(prospectosPortProvider);
       if (_esEdicion) {
+        final cuerpo = cuerpoDeNotaSinAdjuntos(widget.html);
         await port.editarNota(
           idNota: widget.idNota!,
           texto: _texto.text,
-          adjuntos: widget.adjuntosExistentes,
+          // Sin tocar el texto se devuelve el contenido original: es lo único
+          // que conserva negritas, listas y colores escritos en la web.
+          cuerpoConFormato: _textoCambio || cuerpo.isEmpty ? null : cuerpo,
+          adjuntos: _adjuntos,
         );
       } else {
         await port.agregarNota(
@@ -192,121 +225,238 @@ class _HojaNotaState extends ConsumerState<_HojaNota> {
 
     return HojaProspecto(
       icono: Icons.sticky_note_2_outlined,
-      titulo: _esEdicion ? 'Editar nota' : 'Nueva nota',
+      titulo: _soloLectura
+          ? 'Nota interna'
+          : _esEdicion
+          ? 'Editar nota'
+          : 'Nueva nota',
       subtitulo: 'Nota interna · solo visible para ti',
-      acciones: [
-        if (_esEdicion)
+      acciones: _acciones(),
+      children: _soloLectura ? _lectura(t, tone) : _edicion(t, tone),
+    );
+  }
+
+  List<Widget> _acciones() => _soloLectura
+      ? [
           SButton(
-            label: 'Borrar',
+            label: 'Eliminar',
             variant: SButtonVariant.danger,
             fullWidth: false,
             onPressed: _trabajando ? null : _borrar,
           ),
-        SButton.secondary(
-          label: 'Cancelar',
-          fullWidth: false,
-          onPressed: _trabajando ? null : () => Navigator.of(context).pop(),
-        ),
-        SButton(
-          label: 'Guardar',
-          fullWidth: false,
-          loading: _trabajando,
-          loadingLabel: 'Guardando…',
-          onPressed: _trabajando ? null : _guardar,
-        ),
-      ],
-      children: [
-        STextField(
-          controller: _texto,
-          hint: 'Qué pasó con este prospecto…',
-          size: STextFieldSize.md,
-          maxLines: 6,
-          autofocus: true,
-          enabled: !_trabajando,
-          textCapitalization: TextCapitalization.sentences,
-          onChanged: (_) => setState(() {}),
-        ),
-        SizedBox(height: t.space.sm),
+          SButton.secondary(
+            label: 'Editar',
+            fullWidth: false,
+            onPressed: _trabajando
+                ? null
+                : () => setState(() => _soloLectura = false),
+          ),
+        ]
+      : [
+          if (_esEdicion)
+            SButton(
+              label: 'Borrar',
+              variant: SButtonVariant.danger,
+              fullWidth: false,
+              onPressed: _trabajando ? null : _borrar,
+            ),
+          SButton.secondary(
+            label: 'Cancelar',
+            fullWidth: false,
+            onPressed: _trabajando ? null : () => Navigator.of(context).pop(),
+          ),
+          SButton(
+            label: 'Guardar',
+            fullWidth: false,
+            loading: _trabajando,
+            loadingLabel: 'Guardando…',
+            onPressed: _trabajando ? null : _guardar,
+          ),
+        ];
 
-        // Archivos que la nota ya traía: se conservan al guardar.
-        if (widget.adjuntosExistentes.isNotEmpty) ...[
-          const SFieldLabel('Archivos de la nota'),
-          Wrap(
-            spacing: t.space.xs,
-            runSpacing: t.space.xs,
+  /// Nota completa, con su formato y sus imágenes.
+  List<Widget> _lectura(SozuTheme t, SozuColorRoles tone) => [
+    Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(t.space.sm),
+      decoration: BoxDecoration(
+        color: tone.surfaceAlt,
+        borderRadius: t.radius.mdBorder,
+        border: Border.all(color: tone.borderSoft),
+      ),
+      child: NotaHtmlVista(
+        html: widget.html,
+        textoPlano: widget.textoInicial,
+        onVerImagen: (url) => openMedia(context, url, titulo: 'Imagen'),
+      ),
+    ),
+    if (_adjuntos.any((a) => !a.esImagen)) ...[
+      SizedBox(height: t.space.sm),
+      const SFieldLabel('Archivos de la nota'),
+      Wrap(
+        spacing: t.space.xs,
+        runSpacing: t.space.xs,
+        children: [
+          for (final a in _adjuntos.where((a) => !a.esImagen))
+            SPressable(
+              onTap: () => openMedia(context, a.url, titulo: a.nombre),
+              borderRadius: t.radius.fullBorder,
+              semanticLabel: 'Ver ${a.nombre}',
+              child: SBadge(
+                label: a.nombre,
+                icon: Icons.attach_file_outlined,
+                size: SBadgeSize.sm,
+              ),
+            ),
+        ],
+      ),
+    ],
+    if (_error != null) ...[
+      SizedBox(height: t.space.sm),
+      Text(_error!, style: t.text.caption.copyWith(color: tone.danger)),
+    ],
+  ];
+
+  List<Widget> _edicion(SozuTheme t, SozuColorRoles tone) => [
+    STextField(
+      controller: _texto,
+      hint: 'Qué pasó con este prospecto…',
+      size: STextFieldSize.md,
+      maxLines: 6,
+      autofocus: true,
+      enabled: !_trabajando,
+      textCapitalization: TextCapitalization.sentences,
+      onChanged: (_) => setState(() {}),
+    ),
+
+    // El editor del app es de texto plano: se avisa antes de aplastar el
+    // formato que traía la nota, no después.
+    if (_esEdicion && _textoCambio && notaTieneFormato(widget.html)) ...[
+      SizedBox(height: t.space.xs),
+      Container(
+        padding: EdgeInsets.all(t.space.sm),
+        decoration: BoxDecoration(
+          color: tone.warningSoft,
+          borderRadius: t.radius.mdBorder,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_outlined, size: 18, color: tone.warningFg),
+            SizedBox(width: t.space.xs),
+            Expanded(
+              child: Text(
+                'Esta nota se escribió con formato en el portal web. Al guardar '
+                'tu cambio se queda como texto plano.',
+                style: t.text.caption.copyWith(color: tone.warningFg),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+    SizedBox(height: t.space.sm),
+
+    // Archivos que la nota ya traía: se pueden quitar uno por uno.
+    if (_adjuntos.isNotEmpty) ...[
+      const SFieldLabel('Archivos de la nota'),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final a in _adjuntos)
+            _FilaArchivo(
+              nombre: a.esImagen ? 'Imagen' : a.nombre,
+              icono: a.esImagen
+                  ? Icons.image_outlined
+                  : Icons.attach_file_outlined,
+              onQuitar: _trabajando
+                  ? null
+                  : () => setState(() => _adjuntos.remove(a)),
+            ),
+        ],
+      ),
+      SizedBox(height: t.space.xxs),
+      Text(
+        // Agregar archivos al editar necesita que `nota_editar` los reciba, y
+        // hoy solo acepta contenido.
+        'Los que dejes aquí se conservan. Para agregar otro, escribe una nota '
+        'nueva.',
+        style: t.text.caption.copyWith(color: tone.fgSubtle),
+      ),
+      SizedBox(height: t.space.sm),
+    ],
+
+    if (!_esEdicion) ...[
+      if (_nuevos.isNotEmpty)
+        Padding(
+          padding: EdgeInsets.only(bottom: t.space.xs),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final a in widget.adjuntosExistentes)
-                SBadge(
-                  label: a.esImagen ? 'Imagen' : a.nombre,
-                  icon: a.esImagen
-                      ? Icons.image_outlined
-                      : Icons.attach_file_outlined,
-                  size: SBadgeSize.sm,
+              for (final a in _nuevos)
+                _FilaArchivo(
+                  nombre: a.nombre,
+                  icono: Icons.attach_file_outlined,
+                  onQuitar: _trabajando
+                      ? null
+                      : () => setState(() => _nuevos.remove(a)),
                 ),
             ],
           ),
-          SizedBox(height: t.space.xxs),
-          Text(
-            'Se conservan tal cual. Para quitarlos, borra la nota y escribe otra.',
-            style: t.text.caption.copyWith(color: tone.fgSubtle),
-          ),
-          SizedBox(height: t.space.sm),
-        ],
+        ),
+      SButton.secondary(
+        label: 'Adjuntar archivo',
+        icon: Icons.attach_file_outlined,
+        fullWidth: false,
+        onPressed: _trabajando ? null : _adjuntar,
+      ),
+    ],
 
-        if (!_esEdicion) ...[
-          if (_nuevos.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(bottom: t.space.xs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final a in _nuevos)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: t.space.xxs),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.attach_file_outlined,
-                            size: 16,
-                            color: tone.fgMuted,
-                          ),
-                          SizedBox(width: t.space.xxs),
-                          Expanded(
-                            child: Text(
-                              a.nombre,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.text.caption.copyWith(color: tone.fg),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Quitar',
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.close, size: 16),
-                            color: tone.fgMuted,
-                            onPressed: _trabajando
-                                ? null
-                                : () => setState(() => _nuevos.remove(a)),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+    if (_error != null) ...[
+      SizedBox(height: t.space.sm),
+      Text(_error!, style: t.text.caption.copyWith(color: tone.danger)),
+    ],
+  ];
+}
+
+/// Renglón de un archivo de la nota con su botón de quitar.
+class _FilaArchivo extends StatelessWidget {
+  final String nombre;
+  final IconData icono;
+  final VoidCallback? onQuitar;
+
+  const _FilaArchivo({
+    required this.nombre,
+    required this.icono,
+    this.onQuitar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    final tone = t.color;
+    return Padding(
+      padding: EdgeInsets.only(bottom: t.space.xxs),
+      child: Row(
+        children: [
+          Icon(icono, size: 16, color: tone.fgMuted),
+          SizedBox(width: t.space.xxs),
+          Expanded(
+            child: Text(
+              nombre,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.text.caption.copyWith(color: tone.fg),
             ),
-          SButton.secondary(
-            label: 'Adjuntar archivo',
-            icon: Icons.attach_file_outlined,
-            fullWidth: false,
-            onPressed: _trabajando ? null : _adjuntar,
+          ),
+          IconButton(
+            tooltip: 'Quitar',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 16),
+            color: tone.fgMuted,
+            onPressed: onQuitar,
           ),
         ],
-
-        if (_error != null) ...[
-          SizedBox(height: t.space.sm),
-          Text(_error!, style: t.text.caption.copyWith(color: tone.danger)),
-        ],
-      ],
+      ),
     );
   }
 }

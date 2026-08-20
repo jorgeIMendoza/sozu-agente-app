@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
-import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// "Hoy 9:30 am" cuando el acceso fue hoy; si no, "11 feb 2026".
+/// "3:20 pm" a partir de una hora local.
+String _hora12(DateTime d) {
+  final sufijo = d.hour < 12 ? 'am' : 'pm';
+  final hora = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  return '$hora:${d.minute.toString().padLeft(2, '0')} $sufijo';
+}
+
+/// "Hoy 9:30 am" cuando el acceso fue hoy; si no, "11 ago 2026 3:20 pm".
 ///
-/// La hora sola no dice nada un día después, y la fecha sola no distingue "hace
-/// diez minutos" de "esta mañana": cada caso muestra el dato que informa.
+/// La hora va en los dos casos, como en el portal web: la fecha sola no
+/// distingue "entró temprano" de "acaba de salir", y ese es el dato con el que
+/// el agente reconoce si la sesión es suya.
 String etiquetaUltimoAcceso(DateTime? momento) {
   if (momento == null) return '';
   final local = momento.toLocal();
@@ -16,11 +23,8 @@ String etiquetaUltimoAcceso(DateTime? momento) {
       local.year == ahora.year &&
       local.month == ahora.month &&
       local.day == ahora.day;
-  if (!esHoy) return formatDateEsMX(local);
-  final sufijo = local.hour < 12 ? 'am' : 'pm';
-  final hora = local.hour % 12 == 0 ? 12 : local.hour % 12;
-  final minutos = local.minute.toString().padLeft(2, '0');
-  return 'Hoy $hora:$minutos $sufijo';
+  final hora = _hora12(local);
+  return esHoy ? 'Hoy $hora' : '${formatDateEsMX(local)} $hora';
 }
 
 /// Encabezado de Inicio: nombre del agente y, en una línea de metadatos, su rol,
@@ -38,12 +42,17 @@ class SaludoAgente extends StatelessWidget {
 
   final DateTime? ultimoAcceso;
 
+  /// Estado del expediente para la insignia "Verificado" / "No verificado".
+  /// En null no se pinta: solo el aliado externo tiene expediente que verificar.
+  final bool? verificado;
+
   const SaludoAgente({
     super.key,
     required this.nombre,
     required this.rol,
     required this.propiedadesActivas,
     this.ultimoAcceso,
+    this.verificado,
   });
 
   @override
@@ -51,11 +60,10 @@ class SaludoAgente extends StatelessWidget {
     final t = context.s;
     final tone = t.color;
     final acceso = etiquetaUltimoAcceso(ultimoAcceso);
+    final estado = verificado;
 
-    Widget separador() => Text(
-      '·',
-      style: t.text.caption.copyWith(color: tone.fgSubtle),
-    );
+    Widget separador() =>
+        Text('·', style: t.text.caption.copyWith(color: tone.fgSubtle));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,7 +113,18 @@ class SaludoAgente extends StatelessWidget {
             ],
           ),
         ),
-        const ModoPresentacionBoton(),
+        // El interruptor de modo presentación NO va aquí: lo pinta la barra
+        // superior en móvil y el shell en web, así que montarlo también en el
+        // saludo lo duplicaba en pantalla angosta.
+        if (estado != null) ...[
+          SizedBox(width: t.space.sm),
+          SBadge(
+            label: estado ? 'Verificado' : 'No verificado',
+            tone: estado ? SBadgeTone.positive : SBadgeTone.negative,
+            icon: estado ? Icons.check_circle_outline : Icons.error_outline,
+            size: SBadgeSize.sm,
+          ),
+        ],
       ],
     );
   }

@@ -99,7 +99,7 @@ class _InterruptorDePushState extends ConsumerState<_InterruptorDePush> {
   bool _cargando = true;
 
   /// false si la lectura falló (p. ej. backend sin la acción): el interruptor se
-  /// muestra con el valor por defecto pero deshabilitado — degradación limpia.
+  /// muestra con el valor por defecto pero deshabilitado: degradación limpia.
   bool _disponible = true;
 
   @override

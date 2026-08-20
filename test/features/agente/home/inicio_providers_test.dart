@@ -10,7 +10,7 @@ import 'fake_inicio_port.dart';
 
 /// Tablero de Inicio contra el PUERTO (sin Supabase): el mapeo del contrato, el
 /// recorte de citas que hace la pantalla y la reconstrucción del puerto al
-/// cambiar de agente impersonado — si esto último se rompe, un administrador ve
+/// cambiar de agente impersonado: si esto último se rompe, un administrador ve
 /// los números de otro agente.
 void main() {
   test('el resumen mapea kpis, citas y último acceso del contrato', () async {

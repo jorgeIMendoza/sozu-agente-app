@@ -17,6 +17,10 @@ class PerfilSubvista extends StatelessWidget {
   /// Acción a la derecha de la barra superior (p. ej. "Agregar cuenta").
   final Widget? accion;
 
+  /// Pull-to-refresh. Solo se monta si se pasa: un indicador que no recarga nada
+  /// es peor que no tenerlo.
+  final Future<void> Function()? onRefrescar;
+
   final List<Widget> children;
 
   const PerfilSubvista({
@@ -25,6 +29,7 @@ class PerfilSubvista extends StatelessWidget {
     required this.children,
     this.descripcion,
     this.accion,
+    this.onRefrescar,
   });
 
   void _volver(BuildContext context) {
@@ -55,17 +60,28 @@ class PerfilSubvista extends StatelessWidget {
             ),
         ],
       ),
-      body: SafeArea(
-        child: Center(
+      body: SafeArea(child: _cuerpo(context)),
+    );
+  }
+
+  /// El scroll envuelve al limitador de ancho, NO al revés: al revés la rueda
+  /// del ratón solo mueve la columna central y en los laterales la página no
+  /// responde (la misma trampa que documenta `AdminScrollArea`).
+  Widget _cuerpo(BuildContext context) {
+    final t = context.s;
+    final lista = ListView(
+      padding: EdgeInsets.fromLTRB(
+        t.space.md,
+        t.space.sm,
+        t.space.md,
+        t.space.xxl,
+      ),
+      children: [
+        Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 900),
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                t.space.md,
-                t.space.sm,
-                t.space.md,
-                t.space.xxl,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (descripcion != null) ...[
                   Text(
@@ -82,8 +98,10 @@ class PerfilSubvista extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      ],
     );
+    if (onRefrescar == null) return lista;
+    return RefreshIndicator(onRefresh: onRefrescar!, child: lista);
   }
 }
 

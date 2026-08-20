@@ -109,19 +109,25 @@ void main() {
       overrides: [perfilAgentePortProvider.overrideWithValue(port)],
     );
 
-    final estado = await container
+    final veredicto = await container
         .read(perfilAgentePortProvider)
         .subirDocumento(
           tipo: TiposDocumento.constanciaFiscal,
           base64: 'JVBERi0=',
           nombre: 'csf.pdf',
-          datos: const DatosDeConstancia(rfc: 'HEAL850101AB1', regimen: '626'),
+          datos: const DatosDeConstancia(
+            rfc: 'HEAL850101AB1',
+            curp: 'HEAL850101HDFRRL09',
+            regimen: '626',
+          ),
         );
 
-    // El app nunca pide "validado": no puede comprobar que sea el PDF original
-    // del SAT, así que el documento entra a revisión manual.
-    expect(estado, EstadoDocumento.revision);
+    // El app ya no propone estatus: el servidor lee el PDF y lo decide él.
+    expect(veredicto.estado, EstadoDocumento.revision);
     expect(port.ultimosDatosFiscales?.rfc, 'HEAL850101AB1');
+    // El CURP también viaja: está en la whitelist de `persona_updates`, y sin
+    // mandarlo la Constancia dejaba ese dato en el documento y no en el perfil.
+    expect(port.ultimosDatosFiscales?.curp, 'HEAL850101HDFRRL09');
     expect(port.ultimosDatosFiscales?.vacio, isFalse);
   });
 }

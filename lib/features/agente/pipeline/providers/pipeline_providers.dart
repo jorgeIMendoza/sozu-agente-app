@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
+import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/adapters/pipeline_adapter.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
 import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
@@ -176,7 +177,10 @@ class PipelineAcciones {
   }
 
   /// Emite el link del cliente de una oferta que todavía no lo tiene.
-  Future<LinkCliente> generarLink({required int idOferta, String? email}) async {
+  Future<LinkCliente> generarLink({
+    required int idOferta,
+    String? email,
+  }) async {
     final link = await _port.generarLinkCliente(
       idOferta: idOferta,
       email: email,
@@ -184,6 +188,54 @@ class PipelineAcciones {
     _ref.invalidate(detalleOfertaProvider(idOferta));
     _ref.invalidate(pipelineProvider);
     return link;
+  }
+
+  /// Envía la oferta por correo desde la plataforma. No invalida nada: el
+  /// envío no cambia el negocio ni su detalle.
+  Future<EnvioCorreoOferta> enviarPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  }) => _port.enviarOfertaPorCorreo(
+    idOferta: idOferta,
+    email: email,
+    adjuntarPdf: adjuntarPdf,
+  );
+
+  /// Pide el PDF de la oferta. El enlace que devuelve caduca al minuto, así que
+  /// quien lo reciba tiene que consumirlo enseguida.
+  Future<PdfOferta> pdfDeOferta(int idOferta) => _port.pdfDeOferta(idOferta);
+
+  /// Cotiza una unidad del inventario.
+  ///
+  /// Al crearse nace (o crece) un negocio del pipeline y la unidad puede
+  /// cambiar de estado, así que se recargan las dos vistas: sin invalidar el
+  /// inventario el agente vuelve a la lista y sigue viendo la unidad como si
+  /// nadie la hubiera cotizado.
+  Future<OfertaCreada> crearOferta({
+    required int idPropiedad,
+    int? idEsquemaPago,
+    int? idPersonaLead,
+    ProspectoNuevo? prospecto,
+    Map<int, int?> esquemasProducto = const {},
+    bool crearLink = true,
+    bool enviarEmail = false,
+    bool adjuntarPdf = false,
+  }) async {
+    final creada = await _port.crearOferta(
+      idPropiedad: idPropiedad,
+      idEsquemaPago: idEsquemaPago,
+      idPersonaLead: idPersonaLead,
+      prospecto: prospecto,
+      esquemasProducto: esquemasProducto,
+      crearLink: crearLink,
+      enviarEmail: enviarEmail,
+      adjuntarPdf: adjuntarPdf,
+    );
+    _ref.invalidate(pipelineProvider);
+    _ref.invalidate(unidadesProvider);
+    _ref.invalidate(desarrollosProvider);
+    return creada;
   }
 
   void _fijarOptimista(int idOferta, String clave) {

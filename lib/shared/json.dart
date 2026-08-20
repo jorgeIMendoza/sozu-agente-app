@@ -29,7 +29,7 @@ double numDe(Object? valor) {
 }
 
 /// Entero tolerante. Devuelve null cuando no hay valor, para distinguir
-/// "no vino" de "vino cero" — la diferencia entre "sin id" y "id 0".
+/// "no vino" de "vino cero": la diferencia entre "sin id" y "id 0".
 int? intDe(Object? valor) {
   if (valor is int) return valor;
   if (valor is num) return valor.toInt();

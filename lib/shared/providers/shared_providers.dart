@@ -2,11 +2,14 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/data/models.dart';
+import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
 import 'package:sozu_agente_app/features/auth/providers/auth_provider.dart';
 import 'package:sozu_agente_app/shared/adapters/app_version_adapter.dart';
 import 'package:sozu_agente_app/shared/adapters/push_adapter.dart';
+import 'package:sozu_agente_app/shared/adapters/telemetria_adapter.dart';
 import 'package:sozu_agente_app/shared/ports/app_version_port.dart';
 import 'package:sozu_agente_app/shared/ports/push_port.dart';
+import 'package:sozu_agente_app/shared/ports/telemetria_port.dart';
 
 /// Providers transversales (no atados a una hoja de `client`): identidad de la
 /// sesion, push y version gate. Los datos del cliente viven en
@@ -23,6 +26,16 @@ final authUserIdProvider = Provider<String?>((ref) {
 /// existe en produccion; los tests lo sobreescriben con un doble.
 /// No se reconstruye con la impersonacion: el token es del dispositivo.
 final pushPortProvider = Provider<PushPort>((ref) => PushAdapter());
+
+/// Puerto de telemetria (vistas y CTA). Lo consumen las 5 pantallas del portal,
+/// por eso vive aqui. Se reconstruye al cambiar de usuario o de agente
+/// impersonado: el evento se atribuye al agente efectivo, como el resto de las
+/// pantallas.
+final telemetriaPortProvider = Provider<TelemetriaPort>((ref) {
+  ref.watch(authUserIdProvider);
+  final imp = ref.watch(impersonationProvider);
+  return TelemetriaAdapter(impersonate: imp.active ? imp.personaId : null);
+});
 
 /// Puerto del version gate. No depende de la sesion (llave anonima).
 final appVersionPortProvider = Provider<AppVersionPort>(

@@ -37,7 +37,7 @@ class UserProfile {
   final bool requiresPasswordChange;
 
   /// El rol administra la app de agentes (`roles.apps.administrar` incluye
-  /// `agentes`): habilita el acceso administrador del app — selector "ver como
+  /// `agentes`): habilita el acceso administrador del app: selector "ver como
   /// agente" y avisos.
   ///
   /// Se lee del jsonb `apps` que ya devuelve el RPC, NO de una columna propia:

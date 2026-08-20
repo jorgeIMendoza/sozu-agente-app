@@ -25,26 +25,31 @@ class TarjetasTotales extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.s;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: _Total(
-            etiqueta: 'Total cobrado',
-            valor: enmascarar(formatMXN(totales.cobrado)),
-            detalle: 'MXN · acumulado',
-            destacado: true,
+    // IntrinsicHeight y no `stretch` a secas: en un ListView la fila no tiene
+    // alto acotado, y estirar contra infinito revienta el layout. Las dos
+    // tarjetas siguen midiendo lo mismo, que es lo que se buscaba.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _Total(
+              etiqueta: 'Total cobrado',
+              valor: enmascarar(formatMXN(totales.cobrado)),
+              detalle: 'MXN · acumulado',
+              destacado: true,
+            ),
           ),
-        ),
-        SizedBox(width: t.space.sm),
-        Expanded(
-          child: _Total(
-            etiqueta: 'Por cobrar',
-            valor: enmascarar(formatMXN(totales.porCobrar)),
-            detalle: 'MXN · en proceso',
+          SizedBox(width: t.space.sm),
+          Expanded(
+            child: _Total(
+              etiqueta: 'Por cobrar',
+              valor: enmascarar(formatMXN(totales.porCobrar)),
+              detalle: 'MXN · en proceso',
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +12,8 @@ import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port
 import 'package:sozu_agente_app/features/agente/comisiones/providers/comisiones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
 import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
@@ -18,17 +21,66 @@ import 'package:sozu_agente_app/widgets/fx.dart';
 /// Mismo ancho de lectura que Inicio (`max-w-[1040px]` del portal web).
 const double _anchoContenido = 1040;
 
+/// Ruta con la que la web registra esta vista. Se manda idéntica para que la
+/// bitácora no quede partida entre web y app.
+const String _rutaWeb = '/admin/agent/comisiones';
+
+/// Página de los eventos de CTA, idéntica a la de la web.
+const String _paginaCta = 'agent_comisiones';
+
 /// Comisiones del agente: lo que ya cobró, lo que tiene por cobrar, y por cada
 /// operación su estatus y sus documentos.
 ///
-/// El agente dependiente no llega aquí: la vista la esconde
-/// `tabsVisiblesProvider` y el backend le responde 403, porque su comisión la
-/// cobra y factura su inmobiliaria.
-class ComisionesScreen extends ConsumerWidget {
+/// El agente dependiente no llega aquí: `tabsVisiblesProvider` esconde la vista,
+/// el guard del router manda `/comisiones` a Inicio y el backend responde 403,
+/// porque su comisión la cobra y factura su inmobiliaria.
+class ComisionesScreen extends ConsumerStatefulWidget {
   const ComisionesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ComisionesScreen> createState() => _ComisionesScreenState();
+}
+
+class _ComisionesScreenState extends ConsumerState<ComisionesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Los dos eventos que manda la web al montar: la vista en la bitácora y el
+    // `page_view` del tablero de CTA. Sin await: la telemetría no lanza.
+    final telemetria = ref.read(telemetriaPortProvider);
+    unawaited(telemetria.registrarVista(_rutaWeb));
+    unawaited(
+      telemetria.registrarCta(
+        pagina: _paginaCta,
+        elementoId: 'page_view',
+        tipo: 'page',
+      ),
+    );
+  }
+
+  /// Manda un CTA con la página de la web. Los emite la PANTALLA: los
+  /// componentes no conocen identificadores de tablero.
+  ///
+  /// En `metadata` solo folios o ids; ni montos ni datos del cliente.
+  void _cta(
+    String elementoId, {
+    String? etiqueta,
+    Map<String, Object?> metadata = const {},
+  }) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: _paginaCta,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+            metadata: metadata,
+          ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = context.s;
     final comisiones = ref.watch(comisionesProvider);
 
@@ -72,7 +124,13 @@ class ComisionesScreen extends ConsumerWidget {
                     return [
                       TarjetaBloqueo(
                         bloqueo: bloqueo,
-                        onCompletarPerfil: () => context.go('/perfil'),
+                        onCompletarPerfil: () {
+                          _cta(
+                            'btn_completar_perfil_comisiones',
+                            etiqueta: 'Completar perfil',
+                          );
+                          context.go('/perfil');
+                        },
                       ),
                     ];
                   }
@@ -109,17 +167,29 @@ class ComisionesScreen extends ConsumerWidget {
         text: filtradas.length == 1
             ? '1 comisión'
             : '${filtradas.length} comisiones',
-        trailing: const ModoPresentacionBoton(),
       ),
       if (filtradas.isEmpty)
-        _vacio(ref, sinComisiones: datos.comisiones.isEmpty, hayFiltros: hayFiltros)
+        _vacio(
+          ref,
+          sinComisiones: datos.comisiones.isEmpty,
+          hayFiltros: hayFiltros,
+        )
       else
         SStaggered(
           children: [
             for (final comision in filtradas)
               Padding(
                 padding: EdgeInsets.only(bottom: t.space.sm),
-                child: FilaComision(comision: comision),
+                child: FilaComision(
+                  comision: comision,
+                  // `cuentaId` en camelCase y con el nombre de la web: es un
+                  // folio, no un dato del cliente ni un monto.
+                  onAbrirCargaFactura: () => _cta(
+                    'btn_subir_factura_agent',
+                    etiqueta: 'Subir factura (PDF)',
+                    metadata: {'cuentaId': comision.idCuentaCobranza},
+                  ),
+                ),
               ),
           ],
         ),

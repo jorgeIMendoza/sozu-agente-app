@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/esquema_pago_card.dart';
@@ -6,10 +7,11 @@ import 'package:sozu_agente_app/features/agente/inventario/components/galeria_im
 import 'package:sozu_agente_app/features/agente/inventario/components/hoja_inventario.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/unidad_card.dart';
 import 'package:sozu_agente_app/features/agente/inventario/ports/inventario_port.dart';
+import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// Detalle de una unidad: galería, contexto, especificaciones, planos, precio de
-/// lista y los esquemas de pago con sus montos.
+/// Detalle de una unidad: galería, contexto, especificaciones, planos, precio
+/// total con su desglose de extras y los esquemas de pago con sus montos.
 ///
 /// Recibe todo por parámetro (incluidos los permisos ya resueltos): quien la
 /// abre es la pantalla, que sí lee providers.
@@ -48,7 +50,7 @@ Future<void> mostrarDetalleUnidad(
   );
 }
 
-class _DetalleUnidad extends StatefulWidget {
+class _DetalleUnidad extends ConsumerStatefulWidget {
   final Unidad unidad;
   final List<EsquemaPago> esquemas;
   final int mesesEfectivos;
@@ -68,10 +70,10 @@ class _DetalleUnidad extends StatefulWidget {
   });
 
   @override
-  State<_DetalleUnidad> createState() => _DetalleUnidadState();
+  ConsumerState<_DetalleUnidad> createState() => _DetalleUnidadState();
 }
 
-class _DetalleUnidadState extends State<_DetalleUnidad> {
+class _DetalleUnidadState extends ConsumerState<_DetalleUnidad> {
   int? _idEsquema;
 
   EsquemaPago? get _esquema =>
@@ -82,6 +84,10 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
     final t = context.s;
     final tone = t.color;
     final u = widget.unidad;
+    // Los planos se piden aquí y no en la pantalla: el botón solo existe si la
+    // unidad tiene alguno, y eso lo dice el servidor. Ofrecerlo siempre manda al
+    // agente a una pantalla vacía delante del cliente.
+    final planos = ref.watch(planosUnidadProvider(u.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,37 +131,27 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
             children: especificacionesDeUnidad(u),
           ),
         ),
-        SizedBox(height: t.space.sm),
 
-        SButton.secondary(
-          label: 'Ver planos',
-          icon: Icons.architecture_outlined,
-          onPressed: widget.onVerPlanos,
-        ),
-
-        if (u.precioLista > 0) ...[
+        if (planos.isLoading) ...[
           SizedBox(height: t.space.sm),
-          Container(
-            padding: EdgeInsets.all(t.space.md),
-            decoration: BoxDecoration(
-              color: tone.primarySoft,
-              borderRadius: t.radius.lgBorder,
-              border: Border.all(color: tone.primaryBorder),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  'PRECIO DE LISTA',
-                  style: t.text.overline.copyWith(color: tone.primaryHover),
-                ),
-                SizedBox(height: t.space.xxs),
-                Text(
-                  formatMXN(u.precioLista),
-                  style: t.text.h2.copyWith(color: tone.primaryHover),
-                ),
-              ],
-            ),
+          SButton.secondary(
+            label: 'Ver planos',
+            icon: Icons.architecture_outlined,
+            loading: true,
+            onPressed: null,
           ),
+        ] else if (planos.valueOrNull?.vacio == false) ...[
+          SizedBox(height: t.space.sm),
+          SButton.secondary(
+            label: 'Ver planos',
+            icon: Icons.architecture_outlined,
+            onPressed: widget.onVerPlanos,
+          ),
+        ],
+
+        if (u.precioAlCliente > 0) ...[
+          SizedBox(height: t.space.sm),
+          _BloquePrecio(unidad: u),
         ],
 
         if (widget.esquemas.isNotEmpty) ...[
@@ -169,14 +165,16 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
           ),
           SizedBox(height: t.space.xs),
           for (final e in widget.esquemas) ...[
+            // Los esquemas se calculan sobre el precio de LISTA, no sobre el
+            // total: así lo hace la oferta digital, y cambiar la base aquí
+            // haría que la tarjeta y el documento firmado no coincidan.
             EsquemaPagoCard(
               esquema: e,
               precioLista: u.precioLista,
               mesesEfectivos: widget.mesesEfectivos,
               seleccionado: _idEsquema == e.id,
-              onSeleccionar: () => setState(
-                () => _idEsquema = _idEsquema == e.id ? null : e.id,
-              ),
+              onSeleccionar: () =>
+                  setState(() => _idEsquema = _idEsquema == e.id ? null : e.id),
             ),
             SizedBox(height: t.space.xs),
           ],
@@ -211,3 +209,125 @@ class _DetalleUnidadState extends State<_DetalleUnidad> {
     );
   }
 }
+
+/// Bloque de precio de la unidad. Con extras que cobran, desglosa propiedad +
+/// cada bodega o estacionamiento + total; sin ellos, solo el precio de lista.
+class _BloquePrecio extends StatelessWidget {
+  final Unidad unidad;
+
+  const _BloquePrecio({required this.unidad});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    final tone = t.color;
+    final extras = unidad.extrasConCosto;
+
+    return Container(
+      padding: EdgeInsets.all(t.space.md),
+      decoration: BoxDecoration(
+        color: tone.primarySoft,
+        borderRadius: t.radius.lgBorder,
+        border: Border.all(color: tone.primaryBorder),
+      ),
+      child: extras.isEmpty
+          ? Column(
+              children: [
+                Text(
+                  'PRECIO DE LISTA',
+                  style: t.text.overline.copyWith(color: tone.primaryHover),
+                ),
+                SizedBox(height: t.space.xxs),
+                Text(
+                  formatMXN(unidad.precioAlCliente),
+                  style: t.text.h2.copyWith(color: tone.primaryHover),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _FilaPrecio(
+                  etiqueta: Text(
+                    'Propiedad',
+                    style: t.text.body.copyWith(color: tone.fgMuted),
+                  ),
+                  monto: Text(
+                    formatMXN(unidad.precioLista),
+                    style: t.text.body.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: tone.fg,
+                    ),
+                  ),
+                ),
+                for (final e in extras) ...[
+                  SizedBox(height: t.space.xxs),
+                  _FilaPrecio(
+                    etiqueta: Row(
+                      children: [
+                        Icon(
+                          e.tipo == TipoExtra.bodega
+                              ? Icons.warehouse_outlined
+                              : Icons.directions_car_outlined,
+                          size: _iconoExtra,
+                          color: tone.primary,
+                        ),
+                        SizedBox(width: t.space.xxs),
+                        Expanded(
+                          child: Text(
+                            e.etiqueta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.text.caption.copyWith(color: tone.fgMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                    monto: Text(
+                      '+${formatMXN(e.costo)}',
+                      style: t.text.caption.copyWith(color: tone.fgMuted),
+                    ),
+                  ),
+                ],
+                SizedBox(height: t.space.xs),
+                Divider(height: 1, color: tone.primaryBorder),
+                SizedBox(height: t.space.xs),
+                _FilaPrecio(
+                  etiqueta: Text(
+                    'TOTAL',
+                    style: t.text.overline.copyWith(color: tone.primaryHover),
+                  ),
+                  monto: Text(
+                    formatMXN(unidad.precioLista + unidad.totalExtrasConCosto),
+                    style: t.text.h2.copyWith(color: tone.primaryHover),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// Fila del desglose: concepto a la izquierda, importe a la derecha.
+class _FilaPrecio extends StatelessWidget {
+  final Widget etiqueta;
+  final Widget monto;
+
+  const _FilaPrecio({required this.etiqueta, required this.monto});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(child: etiqueta),
+        SizedBox(width: t.space.xs),
+        monto,
+      ],
+    );
+  }
+}
+
+/// Tamaño del icono de un extra en el desglose: acompaña a su nombre.
+const double _iconoExtra = 14;

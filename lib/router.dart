@@ -31,6 +31,8 @@ import 'package:sozu_agente_app/features/admin/screens/select_agente_screen.dart
 import 'package:sozu_agente_app/widgets/fx.dart';
 import 'package:sozu_agente_app/features/agente/home/components/notificaciones_fx.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_shell.dart';
+import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 
 /// Página secundaria con la transición del design system
 /// ([sozuPageTransition]: fade + escala en escritorio, fade + deslizamiento en
@@ -86,10 +88,17 @@ final routerProvider = Provider<GoRouter>((ref) {
   // estado y el mensaje de error al validar rol).
   final auth = ref.read(authProvider);
   final imp = ref.read(impersonationProvider);
+  // La sesión del portal (permisos + recortes) también gatea rutas, y el
+  // redirect la lee con `read`: sin este puente el guard de vistas ocultas no
+  // volvería a correr al llegar la respuesta y el agente dependiente se quedaría
+  // parado en /comisiones recibiendo 403.
+  final sesion = _SesionRefresh();
+  ref.onDispose(sesion.dispose);
+  ref.listen(sesionProvider, (_, _) => sesion.refrescar());
 
   return GoRouter(
     initialLocation: '/inicio',
-    refreshListenable: Listenable.merge([auth, imp]),
+    refreshListenable: Listenable.merge([auth, imp, sesion]),
     redirect: (context, state) {
       final loc = state.matchedLocation;
       final inAuthArea =
@@ -136,6 +145,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (auth.mustChangePassword) {
         return loc == '/change-password' ? null : '/change-password';
       }
+      // Vista oculta alcanzada por deep link o por URL restaurada en web.
+      final aInicio = redireccionVistaOculta(
+        ref.read(sesionProvider).valueOrNull,
+        loc,
+      );
+      if (aInicio != null) return aInicio;
       // Super admin: sin agente seleccionado solo selector o envío de avisos.
       if (auth.isSuperAdmin) {
         if (!imp.active) {
@@ -406,6 +421,39 @@ final routerProvider = Provider<GoRouter>((ref) {
 /// Aterrizaje del enlace de confirmacion de correo. La ruta la fija
 /// `reset-user-password` en el correo; aqui solo se atiende.
 const _rutaConfirmacion = '/auth/confirmacion-email';
+
+/// Guard de las vistas que el portal esconde: devuelve `/inicio` cuando [loc]
+/// pertenece a una vista que [sesion] no puede ver, o null si se puede seguir.
+/// Es el espejo del `<Navigate to="/admin/agent/inicio" replace />` de la web:
+/// sin esto la ruta queda navegable por deep link y el backend contesta 403.
+///
+/// [sesion] null = todavía cargando, y entonces NO se redirige: durante la carga
+/// el menú se recorta a Inicio y Perfil, así que sacaría de /comisiones a
+/// cualquier agente que abra la app ahí.
+String? redireccionVistaOculta(SesionAgente? sesion, String loc) {
+  if (sesion == null || loc == '/inicio') return null;
+  final vista = _vistaDeRuta(loc);
+  if (vista == null || sesion.vistaVisible(vista)) return null;
+  return '/inicio';
+}
+
+/// Vista de la BD ([VistaAgente]) a la que pertenece una ruta del app, o null si
+/// la ruta no la gatea el menú (acceso, splash, selector de agente).
+///
+/// Las secundarias cuelgan de su tab por prefijo: `/perfil/expediente` es la
+/// vista Perfil y `/prospectos/7`, Prospectos.
+String? _vistaDeRuta(String loc) {
+  for (final e in VistaAgente.rutaApp.entries) {
+    if (loc == e.value || loc.startsWith('${e.value}/')) return e.key;
+  }
+  return null;
+}
+
+/// Puente de `sesionProvider` al `refreshListenable` del router. Existe para que
+/// el guard de vistas ocultas se re-evalúe cuando la sesión resuelve.
+class _SesionRefresh extends ChangeNotifier {
+  void refrescar() => notifyListeners();
+}
 
 /// Tabs del shell, EN EL ORDEN DE LAS RAMAS: el índice de esta lista es el
 /// índice de rama que espera `goBranch`, así que no se filtra ni se reordena.

@@ -11,7 +11,7 @@ import 'package:sozu_agente_app/features/agente/comisiones/components/hoja_clien
 import 'package:sozu_agente_app/features/agente/comisiones/ports/comisiones_port.dart';
 import 'package:sozu_agente_app/features/agente/comisiones/providers/comisiones_providers.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Insignia de la etapa de la comisión.
@@ -42,12 +42,20 @@ import 'package:sozu_agente_app/ui/ui.dart';
 /// documentos (el comprobante que sube SOZU y la factura que sube él).
 ///
 /// Es una tarjeta y no una fila de tabla: la tabla del portal web mide 1200 px y
-/// en un teléfono se convierte en scroll horizontal, donde el monto —la columna
-/// que importa— queda fuera de la pantalla.
+/// en un teléfono se convierte en scroll horizontal, donde el monto (la columna
+/// que importa) queda fuera de la pantalla.
 class FilaComision extends ConsumerStatefulWidget {
   final Comision comision;
 
-  const FilaComision({super.key, required this.comision});
+  /// Se llama al abrir la modal de carga de la factura. La telemetría la emite
+  /// la pantalla: la fila no conoce los identificadores del tablero.
+  final VoidCallback onAbrirCargaFactura;
+
+  const FilaComision({
+    super.key,
+    required this.comision,
+    required this.onAbrirCargaFactura,
+  });
 
   @override
   ConsumerState<FilaComision> createState() => _FilaComisionState();
@@ -58,6 +66,7 @@ class _FilaComisionState extends ConsumerState<FilaComision> {
 
   Future<void> _subirFactura() async {
     final comision = widget.comision;
+    widget.onAbrirCargaFactura();
     final archivo = await showSDocUpload(
       context,
       titulo: 'Factura de comisión',
@@ -86,9 +95,7 @@ class _FilaComisionState extends ConsumerState<FilaComision> {
       // Recargar y no parchear la fila en memoria: la factura cambia la etapa de
       // la comisión y los totales, y eso lo decide el backend.
       ref.invalidate(comisionesProvider);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Factura subida.')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Factura subida.')));
     } catch (e) {
       if (!mounted) return;
       setState(() => _subiendo = false);
@@ -347,49 +354,67 @@ class _Documentos extends StatelessWidget {
     final tone = t.color;
     final comprobante = comision.comprobanteUrl;
     final factura = comision.facturaUrl;
+    final hayComprobante = comprobante != null && comprobante.isNotEmpty;
+    final hayFactura = factura != null && factura.isNotEmpty;
 
-    return Wrap(
-      spacing: t.space.xs,
-      runSpacing: t.space.xxs,
+    // Un documento que todavía no existe se NOMBRA, en vez de dejar el hueco o
+    // un botón muerto que se toca tres veces (la web pone un ojo deshabilitado
+    // con tooltip, que en táctil nadie descubre).
+    final avisos = [
+      if (!hayComprobante) 'Sin comprobante de pago.',
+      if (!hayFactura && !comision.puedeSubirFactura)
+        'Podrás facturar cuando se apruebe tu comisión.',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (comprobante != null && comprobante.isNotEmpty)
-          SButton.ghost(
-            label: 'Comprobante',
-            icon: Icons.receipt_long_outlined,
-            size: SButtonSize.sm,
-            onPressed: () => openMedia(
-              context,
-              comprobante,
-              titulo: 'Comprobante de pago · ${comision.folio}',
-            ),
+        if (hayComprobante || hayFactura || comision.puedeSubirFactura)
+          Wrap(
+            spacing: t.space.xs,
+            runSpacing: t.space.xxs,
+            children: [
+              if (hayComprobante)
+                SButton.ghost(
+                  label: 'Comprobante',
+                  icon: Icons.receipt_long_outlined,
+                  size: SButtonSize.sm,
+                  onPressed: () => openMedia(
+                    context,
+                    comprobante,
+                    titulo: 'Comprobante de pago · ${comision.folio}',
+                  ),
+                ),
+              if (hayFactura)
+                SButton.ghost(
+                  label: 'Mi factura',
+                  icon: Icons.description_outlined,
+                  size: SButtonSize.sm,
+                  onPressed: () => openMedia(
+                    context,
+                    factura,
+                    titulo: 'Factura · ${comision.folio}',
+                  ),
+                )
+              else if (comision.puedeSubirFactura)
+                SButton.secondary(
+                  label: 'Subir factura',
+                  icon: Icons.upload_file_outlined,
+                  size: SButtonSize.sm,
+                  fullWidth: false,
+                  loading: subiendo,
+                  loadingLabel: 'Subiendo…',
+                  onPressed: onSubirFactura,
+                ),
+            ],
           ),
-        if (factura != null && factura.isNotEmpty)
-          SButton.ghost(
-            label: 'Mi factura',
-            icon: Icons.description_outlined,
-            size: SButtonSize.sm,
-            onPressed: () => openMedia(
-              context,
-              factura,
-              titulo: 'Factura · ${comision.folio}',
+        if (avisos.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(top: t.space.xxs),
+            child: Text(
+              avisos.join(' '),
+              style: t.text.caption.copyWith(color: tone.fgSubtle),
             ),
-          )
-        else if (comision.puedeSubirFactura)
-          SButton.secondary(
-            label: 'Subir factura',
-            icon: Icons.upload_file_outlined,
-            size: SButtonSize.sm,
-            fullWidth: false,
-            loading: subiendo,
-            loadingLabel: 'Subiendo…',
-            onPressed: onSubirFactura,
-          )
-        else
-          // Ni factura ni permiso de subirla: se dice cuándo podrá, en vez de
-          // dejar la celda vacía o un botón muerto que se toca tres veces.
-          Text(
-            'Podrás facturar cuando se apruebe tu comisión.',
-            style: t.text.caption.copyWith(color: tone.fgSubtle),
           ),
       ],
     );

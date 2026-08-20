@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,9 +10,11 @@ import 'package:sozu_agente_app/features/agente/inventario/components/desarrollo
 import 'package:sozu_agente_app/features/agente/inventario/ports/inventario_port.dart';
 import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/features/agente/inventario/services/mensajes_error.dart';
+import 'package:sozu_agente_app/features/agente/inventario/services/telemetria_inventario.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 import 'package:sozu_agente_app/widgets/portal_widgets.dart';
@@ -44,8 +48,8 @@ class InventarioScreen extends ConsumerWidget {
   }
 }
 
-/// Buscador + rejilla. Es un componente con estado (el controlador del campo)
-/// porque la pantalla solo compone.
+/// Buscador + rejilla. Es un componente con estado (el controlador del campo y
+/// la telemetría de la vista) porque la pantalla solo compone.
 class _Contenido extends ConsumerStatefulWidget {
   final bool portal;
 
@@ -63,6 +67,20 @@ class _ContenidoState extends ConsumerState<_Contenido> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    final t = ref.read(telemetriaPortProvider);
+    unawaited(t.registrarVista(TelemetriaInventario.rutaListado));
+    unawaited(
+      t.registrarCta(
+        pagina: TelemetriaInventario.paginaListado,
+        elementoId: TelemetriaInventario.vistaPantalla,
+        tipo: TelemetriaInventario.tipoPagina,
+      ),
+    );
+  }
+
+  @override
   void dispose() {
     _busqueda.dispose();
     super.dispose();
@@ -74,6 +92,42 @@ class _ContenidoState extends ConsumerState<_Contenido> {
       await ref.read(desarrollosProvider.future);
     } catch (_) {
       // El estado de error lo pinta la lista; aquí solo se corta el spinner.
+    }
+  }
+
+  /// CTA del inventario. `metadata` va sin PII: solo ids y el canal elegido.
+  void _cta(
+    String elementoId, {
+    String? etiqueta,
+    Map<String, Object?> metadata = const {},
+  }) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: TelemetriaInventario.paginaListado,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+            metadata: metadata,
+          ),
+    );
+  }
+
+  void _buscar(String texto) {
+    ref.read(busquedaDesarrollosProvider.notifier).state = texto;
+    // Mismo disparo que la web: cada cambio con texto cuenta como uso del
+    // buscador. Sin la misma regla, la serie del app no es comparable.
+    if (texto.isNotEmpty) {
+      unawaited(
+        ref
+            .read(telemetriaPortProvider)
+            .registrarCta(
+              pagina: TelemetriaInventario.paginaListado,
+              elementoId: TelemetriaInventario.inputBuscarDesarrollo,
+              etiqueta: 'Buscar desarrollo',
+              tipo: TelemetriaInventario.tipoCampo,
+            ),
+      );
     }
   }
 
@@ -93,91 +147,141 @@ class _ContenidoState extends ConsumerState<_Contenido> {
     final lista = ref.watch(desarrollosProvider);
     final busqueda = ref.watch(busquedaDesarrollosProvider);
     final permisos = ref.watch(permisosVistaProvider(VistaAgente.inventario));
+    final margen = widget.portal ? 0.0 : t.space.md;
 
-    return RefreshIndicator(
-      onRefresh: _recargar,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          widget.portal ? 0 : t.space.md,
-          widget.portal ? 0 : t.space.xs,
-          widget.portal ? 0 : t.space.md,
-          t.space.xl,
-        ),
-        children: [
-          if (widget.portal) ...[
-            const PortalPageHeader(
-              title: 'Inventario',
-              subtitle: 'Desarrollos y unidades disponibles',
-            ),
-            SizedBox(height: t.space.md),
-          ],
-          SSearchField(
-            controller: _busqueda,
-            hintText: 'Buscar desarrollo…',
-            onChanged: (v) =>
-                ref.read(busquedaDesarrollosProvider.notifier).state = v,
+    // El buscador va FUERA del scroll: con 20 desarrollos, buscar obligaba a
+    // subir hasta arriba. Es el equivalente del `sticky` del portal web.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            margen,
+            widget.portal ? 0 : t.space.xs,
+            margen,
+            t.space.md,
           ),
-          SizedBox(height: t.space.md),
-          lista.when(
-            loading: () => const ResponsiveCardGrid(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.portal) ...[
+                const PortalPageHeader(
+                  title: 'Inventario',
+                  subtitle: 'Desarrollos y unidades disponibles',
+                ),
+                SizedBox(height: t.space.md),
+              ],
+              SSearchField(
+                controller: _busqueda,
+                hintText: 'Buscar desarrollo…',
+                onChanged: _buscar,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _recargar,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(margen, 0, margen, t.space.xl),
               children: [
-                DesarrolloCardSkeleton(),
-                DesarrolloCardSkeleton(),
-                DesarrolloCardSkeleton(),
+                lista.when(
+                  loading: () => const ResponsiveCardGrid(
+                    children: [
+                      DesarrolloCardSkeleton(),
+                      DesarrolloCardSkeleton(),
+                      DesarrolloCardSkeleton(),
+                    ],
+                  ),
+                  error: (e, _) => SErrorState(
+                    title: 'No pudimos cargar el inventario',
+                    message: mensajeErrorInventario(e),
+                    onRetry: () => ref.invalidate(desarrollosProvider),
+                  ),
+                  data: (todos) {
+                    // Vacío por acceso y vacío por búsqueda no son lo mismo: el
+                    // primero se resuelve pidiendo proyectos, el segundo
+                    // borrando el texto. Un solo mensaje para los dos manda al
+                    // agente a reportar un bug que no existe.
+                    if (todos.isEmpty) return const _SinAcceso();
+                    final visibles = _filtrar(todos, busqueda);
+                    if (visibles.isEmpty) {
+                      return SEmptyState.card(
+                        icon: Icons.search_off_outlined,
+                        title: 'Sin resultados',
+                        message:
+                            'Ningún desarrollo coincide con '
+                            '"${busqueda.trim()}".',
+                        action: SButton.secondary(
+                          label: 'Limpiar búsqueda',
+                          fullWidth: false,
+                          onPressed: () {
+                            _busqueda.clear();
+                            ref
+                                    .read(busquedaDesarrollosProvider.notifier)
+                                    .state =
+                                '';
+                          },
+                        ),
+                      );
+                    }
+                    return ResponsiveCardGrid(
+                      children: [
+                        for (final d in visibles)
+                          DesarrolloCard(
+                            desarrollo: d,
+                            puedeVer: permisos.leer,
+                            onVerFicha: () {
+                              _cta(
+                                TelemetriaInventario.btnVerDesarrollo,
+                                etiqueta: 'Ver Desarrollo',
+                                metadata: {'proyecto_id': d.id},
+                              );
+                              context.push('/inventario/proyecto/${d.id}');
+                            },
+                            onVerUnidades: () {
+                              _cta(
+                                TelemetriaInventario.btnVerInventario,
+                                etiqueta: 'Ver inventario',
+                                metadata: {'proyecto_id': d.id},
+                              );
+                              context.push(
+                                '/inventario/unidades?proyecto=${d.id}',
+                              );
+                            },
+                            onCompartir: () {
+                              _cta(
+                                TelemetriaInventario.btnCompartir,
+                                etiqueta: 'Compartir',
+                                metadata: {'proyecto_id': d.id},
+                              );
+                              unawaited(
+                                mostrarCompartirDesarrollo(
+                                  context,
+                                  nombre: d.nombre,
+                                  urlPublica: d.urlPublica,
+                                  ubicacion: d.ubicacion,
+                                  onPlataforma: (plataforma) => _cta(
+                                    TelemetriaInventario.btnCompartirPlataforma,
+                                    etiqueta: 'Compartir $plataforma',
+                                    metadata: {
+                                      'plataforma': plataforma,
+                                      'proyecto_id': d.id,
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
-            error: (e, _) => SErrorState(
-              title: 'No pudimos cargar el inventario',
-              message: mensajeErrorInventario(e),
-              onRetry: () => ref.invalidate(desarrollosProvider),
-            ),
-            data: (todos) {
-              // Vacío por acceso y vacío por búsqueda no son lo mismo: el
-              // primero se resuelve pidiendo proyectos, el segundo borrando el
-              // texto. Un solo mensaje para los dos manda al agente a reportar
-              // un bug que no existe.
-              if (todos.isEmpty) return const _SinAcceso();
-              final visibles = _filtrar(todos, busqueda);
-              if (visibles.isEmpty) {
-                return SEmptyState.card(
-                  icon: Icons.search_off_outlined,
-                  title: 'Sin resultados',
-                  message:
-                      'Ningún desarrollo coincide con "${busqueda.trim()}".',
-                  action: SButton.secondary(
-                    label: 'Limpiar búsqueda',
-                    fullWidth: false,
-                    onPressed: () {
-                      _busqueda.clear();
-                      ref.read(busquedaDesarrollosProvider.notifier).state = '';
-                    },
-                  ),
-                );
-              }
-              return ResponsiveCardGrid(
-                children: [
-                  for (final d in visibles)
-                    DesarrolloCard(
-                      desarrollo: d,
-                      puedeVer: permisos.leer,
-                      onVerFicha: () =>
-                          context.push('/inventario/proyecto/${d.id}'),
-                      onVerUnidades: () => context.push(
-                        '/inventario/unidades?proyecto=${d.id}',
-                      ),
-                      onCompartir: () => mostrarCompartirDesarrollo(
-                        context,
-                        nombre: d.nombre,
-                        urlPublica: d.urlPublica,
-                        ubicacion: d.ubicacion,
-                      ),
-                    ),
-                ],
-              );
-            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -197,4 +301,3 @@ class _SinAcceso extends StatelessWidget {
         'que te dé acceso a los desarrollos y aparecerán aquí.',
   );
 }
-

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,8 +12,11 @@ import 'package:sozu_agente_app/features/agente/inventario/ports/inventario_port
 import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/features/agente/inventario/screens/planos_unidad_screen.dart';
 import 'package:sozu_agente_app/features/agente/inventario/services/mensajes_error.dart';
+import 'package:sozu_agente_app/features/agente/inventario/services/telemetria_inventario.dart';
+import 'package:sozu_agente_app/features/agente/pipeline/components/nueva_oferta_hoja.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 
@@ -82,7 +87,17 @@ class _BuscadorState extends ConsumerState<_Buscador> {
     text: ref.read(busquedaUnidadProvider),
   );
 
+  /// Controlador de la lista, para volver al tope al cambiar de página: sin él
+  /// el agente pasa a la 3 y aterriza a media lista, viendo unidades nuevas
+  /// desde el renglón 12.
+  final ScrollController _scroll = ScrollController();
+
   int _pagina = 0;
+
+  /// Última página que llegó completa. Se sigue pintando mientras la siguiente
+  /// viaja: reemplazarla por siluetas hace parpadear la pantalla entera cuando
+  /// lo único que cambió son 30 renglones.
+  PaginaUnidades? _ultimaPagina;
 
   /// Mayor total visto. Al buscar por número de unidad se filtra en cliente, y
   /// para eso hay que pedir de una todas las unidades del filtro vigente, no la
@@ -101,7 +116,17 @@ class _BuscadorState extends ConsumerState<_Buscador> {
   @override
   void initState() {
     super.initState();
-    final hayPreseleccion = widget.idProyecto != null || widget.idModelo != null;
+    final tel = ref.read(telemetriaPortProvider);
+    unawaited(tel.registrarVista(TelemetriaInventario.rutaUnidades));
+    unawaited(
+      tel.registrarCta(
+        pagina: TelemetriaInventario.paginaUnidades,
+        elementoId: TelemetriaInventario.vistaPantalla,
+        tipo: TelemetriaInventario.tipoPagina,
+      ),
+    );
+    final hayPreseleccion =
+        widget.idProyecto != null || widget.idModelo != null;
     if (hayPreseleccion) {
       _resolviendo = true;
       _resolverPreseleccion();
@@ -113,7 +138,26 @@ class _BuscadorState extends ConsumerState<_Buscador> {
   @override
   void dispose() {
     _busqueda.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  /// CTA de la vista de unidades. `metadata` va sin PII ni montos.
+  void _cta(
+    String elementoId, {
+    String? etiqueta,
+    Map<String, Object?> metadata = const {},
+  }) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: TelemetriaInventario.paginaUnidades,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+            metadata: metadata,
+          ),
+    );
   }
 
   /// Traduce los ids con los que se navegó a los nombres que entiende la
@@ -121,9 +165,7 @@ class _BuscadorState extends ConsumerState<_Buscador> {
   Future<void> _resolverPreseleccion() async {
     final pre = (idDesarrollo: widget.idProyecto, idModelo: widget.idModelo);
     try {
-      final filtros = await ref.read(
-        preseleccionFiltrosProvider(pre).future,
-      );
+      final filtros = await ref.read(preseleccionFiltrosProvider(pre).future);
       if (!mounted) return;
       ref.read(filtrosUnidadesProvider.notifier).state = filtros;
       // Contexto nuevo: la búsqueda anterior no aplica a este desarrollo.
@@ -184,13 +226,24 @@ class _BuscadorState extends ConsumerState<_Buscador> {
       final nuevoTotal = pagina.total > _ultimoTotal
           ? pagina.total
           : _ultimoTotal;
-      final min = precios.isEmpty ? null : precios.reduce((a, b) => a < b ? a : b);
-      final max = precios.isEmpty ? null : precios.reduce((a, b) => a > b ? a : b);
+      final min = precios.isEmpty
+          ? null
+          : precios.reduce((a, b) => a < b ? a : b);
+      final max = precios.isEmpty
+          ? null
+          : precios.reduce((a, b) => a > b ? a : b);
       final cambiaMin = min != null && _precioMinVisto == null;
       final cambiaMax = max != null && _precioMaxVisto == null;
-      if (nuevoTotal == _ultimoTotal && !cambiaMin && !cambiaMax) return;
+      final cambiaPagina = !identical(_ultimaPagina, pagina);
+      if (nuevoTotal == _ultimoTotal &&
+          !cambiaMin &&
+          !cambiaMax &&
+          !cambiaPagina) {
+        return;
+      }
       setState(() {
         _ultimoTotal = nuevoTotal;
+        _ultimaPagina = pagina;
         if (cambiaMin) _precioMinVisto = min.floorToDouble();
         if (cambiaMax) _precioMaxVisto = max.ceilToDouble();
       });
@@ -199,11 +252,31 @@ class _BuscadorState extends ConsumerState<_Buscador> {
 
   void _irAPagina(int destino) {
     setState(() => _pagina = destino);
+    if (_scroll.hasClients) {
+      unawaited(
+        _scroll.animateTo(
+          0,
+          duration: context.s.motion.normal,
+          curve: context.s.motion.standard,
+        ),
+      );
+    }
   }
 
   Future<void> _abrirUnidad(Unidad unidad, PaginaUnidades pagina) {
     final permisos = ref.read(permisosVistaProvider(VistaAgente.inventario));
     final onboarding = ref.read(onboardingProvider);
+    // El nombre del desarrollo no es PII: identifica el inventario, no a una
+    // persona. Es el mismo par que manda la web.
+    final identificadores = <String, Object?>{
+      'propiedad_id': unidad.id,
+      'proyecto': unidad.desarrolloNombre,
+    };
+    _cta(
+      TelemetriaInventario.btnDetalleUnidad,
+      etiqueta: 'Depto ${unidad.numero ?? unidad.id}',
+      metadata: identificadores,
+    );
     return mostrarDetalleUnidad(
       context,
       unidad: unidad,
@@ -216,11 +289,44 @@ class _BuscadorState extends ConsumerState<_Buscador> {
       ),
       puedeGenerarOferta: permisos.generarOferta,
       capacitacionCompleta: onboarding.capacitacionCompleta,
-      // El diálogo de configuración de oferta lo construye otra tanda: el punto
-      // de entrada se queda aquí, con el esquema ya elegido, para que cuando
-      // exista solo haya que cambiar esta línea por su navegación.
-      onConfigurarOferta: (esquema) => ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Disponible en la siguiente tanda')),
+      onConfigurarOferta: (esquema) => _configurarOferta(unidad, esquema),
+    );
+  }
+
+  /// Abre la configuración de la oferta con el plan ya elegido en el detalle.
+  ///
+  /// El CTA se emite AQUÍ y no dentro de la hoja: mide la intención de cotizar,
+  /// que es el último paso del embudo, y así cuadra con el de la web.
+  void _configurarOferta(Unidad unidad, EsquemaPago? esquema) {
+    _cta(
+      TelemetriaInventario.btnConfigurarOferta,
+      etiqueta: 'Configurar Oferta',
+      metadata: {
+        'propiedad_id': unidad.id,
+        if (unidad.idDesarrollo != null) 'proyecto_id': unidad.idDesarrollo,
+        if (esquema != null) 'esquema_id': esquema.id,
+      },
+    );
+    unawaited(
+      configurarNuevaOferta(
+        context,
+        unidad: UnidadParaOferta(
+          idPropiedad: unidad.id,
+          etiqueta: unidad.etiqueta,
+          desarrollo: unidad.desarrolloNombre ?? '',
+          precioTotal: unidad.precioLista + unidad.totalExtrasConCosto,
+          idEsquemaPago: esquema?.id,
+          esquemaNombre: esquema?.nombre ?? '',
+          extras: [
+            for (final e in unidad.extrasConCosto)
+              ExtraParaOferta(
+                etiqueta: e.etiqueta,
+                esBodega: e.tipo == TipoExtra.bodega,
+                costo: e.costo,
+              ),
+          ],
+        ),
+        onAgendarCapacitacion: () => context.go('/perfil/capacitacion'),
       ),
     );
   }
@@ -243,6 +349,14 @@ class _BuscadorState extends ConsumerState<_Buscador> {
     final consulta = _consulta(filtros);
     final resultado = ref.watch(unidadesProvider(consulta));
     final columnas = context.responsive(mobile: 1, tablet: 2, desktop: 3);
+    // Solo el aliado externo: el agente interno de SOZU no tiene expediente que
+    // verificar. `identidad == null` = la sesión aún no llegó, y sin eso el
+    // badge alcanzaría a parpadear en cada entrada.
+    final identidad = ref.watch(identidadAgenteProvider);
+    final sinVerificar =
+        identidad != null &&
+        identidad.esAgenteInmobiliario &&
+        !ref.watch(onboardingProvider).verificado;
 
     return ContentFrame(
       maxWidth: _anchoLista,
@@ -256,29 +370,61 @@ class _BuscadorState extends ConsumerState<_Buscador> {
               widget.portal ? 0 : t.space.md,
               t.space.xs,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: SSearchField(
-                    controller: _busqueda,
-                    hintText: 'Buscar unidad…',
-                    onChanged: (v) =>
-                        ref.read(busquedaUnidadProvider.notifier).state = v,
+                // Fuera del scroll y siempre a la vista, como en la web: el
+                // agente que va a generar una oferta tiene que saber que su
+                // expediente todavia no esta completo.
+                if (sinVerificar) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: SBadge(
+                      label: 'No verificado',
+                      tone: SBadgeTone.negative,
+                      size: SBadgeSize.sm,
+                      icon: Icons.error_outline,
+                    ),
                   ),
-                ),
-                SizedBox(width: t.space.xs),
-                _BotonFiltros(activos: filtros.activos, onAbrir: _abrirFiltros),
-                SizedBox(width: t.space.xxs),
-                IconButton(
-                  tooltip: 'Limpiar filtros',
-                  icon: const Icon(Icons.filter_alt_off_outlined),
-                  color: filtros.hayFiltros
-                      ? t.color.primaryHover
-                      : t.color.fgSubtle,
-                  onPressed: filtros.hayFiltros
-                      ? () => ref.read(filtrosUnidadesProvider.notifier).state =
-                            const FiltrosUnidades()
-                      : null,
+                  SizedBox(height: t.space.xxs),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: SSearchField(
+                        controller: _busqueda,
+                        hintText: 'Buscar unidad…',
+                        onChanged: (v) =>
+                            ref.read(busquedaUnidadProvider.notifier).state = v,
+                      ),
+                    ),
+                    SizedBox(width: t.space.xs),
+                    _BotonFiltros(
+                      activos: filtros.activos,
+                      onAbrir: () {
+                        _cta(
+                          TelemetriaInventario.btnFiltros,
+                          etiqueta: 'Filtros',
+                        );
+                        unawaited(_abrirFiltros());
+                      },
+                    ),
+                    SizedBox(width: t.space.xxs),
+                    IconButton(
+                      tooltip: 'Limpiar filtros',
+                      icon: const Icon(Icons.filter_alt_off_outlined),
+                      color: filtros.hayFiltros
+                          ? t.color.primaryHover
+                          : t.color.fgSubtle,
+                      onPressed: filtros.hayFiltros
+                          ? () =>
+                                ref
+                                        .read(filtrosUnidadesProvider.notifier)
+                                        .state =
+                                    const FiltrosUnidades()
+                          : null,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -287,10 +433,30 @@ class _BuscadorState extends ConsumerState<_Buscador> {
             child: _resolviendo
                 ? _ListaCargando(columnas: columnas, portal: widget.portal)
                 : resultado.when(
-                    loading: () => _ListaCargando(
-                      columnas: columnas,
-                      portal: widget.portal,
-                    ),
+                    // Con una página ya vista se conserva y solo se marca que
+                    // viene otra; las siluetas quedan para la primera carga.
+                    loading: () {
+                      final previa = _ultimaPagina;
+                      if (previa == null) {
+                        return _ListaCargando(
+                          columnas: columnas,
+                          portal: widget.portal,
+                        );
+                      }
+                      return _Lista(
+                        unidades: _filtrarPorNumero(previa.unidades, busqueda),
+                        columnas: columnas,
+                        portal: widget.portal,
+                        total: previa.total,
+                        totalPaginas: previa.totalPaginas,
+                        pagina: _pagina,
+                        paginable: busqueda.trim().isEmpty,
+                        cargando: true,
+                        scroll: _scroll,
+                        onPagina: _irAPagina,
+                        onTocar: (u) => _abrirUnidad(u, previa),
+                      );
+                    },
                     error: (e, _) => ListView(
                       padding: EdgeInsets.all(t.space.md),
                       children: [
@@ -340,6 +506,7 @@ class _BuscadorState extends ConsumerState<_Buscador> {
                         // Con búsqueda activa se pidió una sola página grande:
                         // paginar ahí no tiene sentido.
                         paginable: busqueda.trim().isEmpty,
+                        scroll: _scroll,
                         onPagina: _irAPagina,
                         onTocar: (u) => _abrirUnidad(u, pagina),
                       );
@@ -391,6 +558,11 @@ class _Lista extends StatelessWidget {
   final int totalPaginas;
   final int pagina;
   final bool paginable;
+
+  /// La página que se pinta es la anterior y ya viene otra en camino.
+  final bool cargando;
+
+  final ScrollController scroll;
   final ValueChanged<int> onPagina;
   final ValueChanged<Unidad> onTocar;
 
@@ -402,14 +574,17 @@ class _Lista extends StatelessWidget {
     required this.totalPaginas,
     required this.pagina,
     required this.paginable,
+    required this.scroll,
     required this.onPagina,
     required this.onTocar,
+    this.cargando = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final t = context.s;
     return ListView(
+      controller: scroll,
       padding: EdgeInsets.fromLTRB(
         portal ? 0 : t.space.md,
         0,
@@ -433,8 +608,14 @@ class _Lista extends StatelessWidget {
         ),
         if (paginable && totalPaginas > 1) ...[
           SizedBox(height: t.space.md),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // `Wrap` y no `Row`: los dos botones con su texto y el indicador no
+          // caben en el ancho de un teléfono, y una fila que se desborda recorta
+          // "Siguiente" justo cuando hay más de una página.
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: t.space.md,
+            runSpacing: t.space.xs,
             children: [
               SButton.secondary(
                 label: 'Anterior',
@@ -442,12 +623,25 @@ class _Lista extends StatelessWidget {
                 fullWidth: false,
                 onPressed: pagina == 0 ? null : () => onPagina(pagina - 1),
               ),
-              SizedBox(width: t.space.md),
-              Text(
-                '${pagina + 1} / $totalPaginas',
-                style: t.text.bodySmall.copyWith(color: t.color.fgMuted),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${pagina + 1} / $totalPaginas',
+                    style: t.text.bodySmall.copyWith(color: t.color.fgMuted),
+                  ),
+                  if (cargando) ...[
+                    SizedBox(width: t.space.xxs),
+                    SizedBox.square(
+                      dimension: _ladoSpinnerPagina,
+                      child: CircularProgressIndicator(
+                        strokeWidth: _grosorSpinnerPagina,
+                        color: t.color.fgSubtle,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              SizedBox(width: t.space.md),
               SButton.secondary(
                 label: 'Siguiente',
                 trailingIcon: Icons.chevron_right,
@@ -587,3 +781,7 @@ const double _anchoLista = 1100;
 
 /// Tope del rango de precio mientras no se conoce el inventario visible.
 const double _precioMaxDefault = 10000000;
+
+/// Spinner del paginador: acompaña al texto "3 / 8", no lo reemplaza.
+const double _ladoSpinnerPagina = 12;
+const double _grosorSpinnerPagina = 1.6;

@@ -334,11 +334,7 @@ class PropiedadOferta {
   final String numero;
   final double? precioLista;
 
-  const PropiedadOferta({
-    required this.id,
-    this.numero = '',
-    this.precioLista,
-  });
+  const PropiedadOferta({required this.id, this.numero = '', this.precioLista});
 
   factory PropiedadOferta.fromJson(Map<String, dynamic> j) => PropiedadOferta(
     id: intDe(j['id']) ?? 0,
@@ -515,6 +511,184 @@ class CambioEsquema {
   );
 }
 
+/// PDF de la oferta ya generado en el servidor.
+///
+/// [url] es EFÍMERA: el backend borra el archivo del bucket al minuto, así que
+/// hay que abrirla o descargarla en el acto. Guardarla o reusarla da un 404.
+class PdfOferta {
+  final String url;
+
+  /// Nombre con el que se debe guardar el archivo.
+  final String nombreArchivo;
+
+  /// Vida del enlace en segundos, tal como la reporta el servidor.
+  final int expiraEnSegundos;
+
+  const PdfOferta({
+    required this.url,
+    this.nombreArchivo = 'oferta.pdf',
+    this.expiraEnSegundos = 60,
+  });
+
+  factory PdfOferta.fromJson(Map<String, dynamic> j) => PdfOferta(
+    url: (j['url'] as String?) ?? '',
+    nombreArchivo: (j['nombre_archivo'] as String?)?.trim().isNotEmpty == true
+        ? j['nombre_archivo'] as String
+        : 'oferta.pdf',
+    expiraEnSegundos: intDe(j['expira_en_segundos']) ?? 60,
+  );
+}
+
+/// Resultado del envío de la oferta por correo desde la plataforma.
+class EnvioCorreoOferta {
+  final bool enviado;
+
+  /// Destinatario al que se envió, como lo tomó el servidor.
+  final String email;
+
+  /// El correo salió con el PDF adjunto.
+  final bool conPdf;
+
+  const EnvioCorreoOferta({
+    this.enviado = false,
+    this.email = '',
+    this.conPdf = false,
+  });
+
+  factory EnvioCorreoOferta.fromJson(Map<String, dynamic> j) =>
+      EnvioCorreoOferta(
+        enviado: j['enviado'] == true,
+        email: (j['email'] as String?) ?? '',
+        conPdf: j['con_pdf'] == true,
+      );
+}
+
+/// Prospecto que se captura al cotizar, cuando todavía no está en la cartera.
+///
+/// Lo da de alta el servidor con su propia deduplicación (por RFC y por correo):
+/// si la persona ya existe la reusa en vez de duplicarla.
+class ProspectoNuevo {
+  final String nombreCompleto;
+  final String email;
+
+  /// Exactamente 10 dígitos, sin lada ni separadores: el servidor lo rechaza
+  /// con `telefono_invalido` en cualquier otra forma.
+  final String telefono;
+
+  /// ISO del país ("MX"), no la lada, igual que `personas.clave_pais_telefono`.
+  final String clavePaisTelefono;
+
+  /// `pf` (física) o `pm` (moral).
+  final String tipoPersona;
+
+  final String? rfc;
+  final String? curp;
+
+  const ProspectoNuevo({
+    required this.nombreCompleto,
+    required this.email,
+    required this.telefono,
+    this.clavePaisTelefono = 'MX',
+    this.tipoPersona = 'pf',
+    this.rfc,
+    this.curp,
+  });
+}
+
+/// Oferta de una bodega o un estacionamiento, emitida junto con la de la unidad.
+class OfertaDeProducto {
+  final int idOferta;
+  final int idProducto;
+  final String nombre;
+  final int? idEsquemaSeleccionado;
+
+  /// Salió con CLABE de cobro. `false` = no se pudo generar, y el servidor lo
+  /// explica en [OfertaCreada.avisos].
+  final bool tieneClabe;
+
+  const OfertaDeProducto({
+    required this.idOferta,
+    required this.idProducto,
+    this.nombre = '',
+    this.idEsquemaSeleccionado,
+    this.tieneClabe = false,
+  });
+
+  factory OfertaDeProducto.fromJson(Map<String, dynamic> j) => OfertaDeProducto(
+    idOferta: intDe(j['id_oferta']) ?? 0,
+    idProducto: intDe(j['id_producto']) ?? 0,
+    nombre: (j['nombre'] as String?) ?? '',
+    idEsquemaSeleccionado: intDe(j['id_esquema_pago_seleccionado']),
+    tieneClabe: j['clabe'] == true,
+  );
+}
+
+/// Resultado de cotizar una unidad: la oferta de la propiedad, una por cada
+/// extra que se cobra aparte, y el link del cliente si se pidió emitirlo.
+class OfertaCreada {
+  final int idOferta;
+
+  /// Persona del prospecto, ya sea la elegida o la que creó esta llamada.
+  final int idPersonaLead;
+
+  final bool prospectoCreado;
+  final int? idEsquemaSeleccionado;
+  final List<OfertaDeProducto> ofertasProducto;
+
+  /// Avisos redactados por el servidor (un extra sin CLABE, el correo que no
+  /// salió). Se muestran TAL CUAL: el app no los reescribe ni los resume.
+  final List<String> avisos;
+
+  /// Link del cliente; null cuando no se pidió emitirlo.
+  final LinkCliente? link;
+
+  final bool emailEnviado;
+
+  /// Negocio del pipeline. **null significa que no se pudo leer**, no que no
+  /// exista: lo crea un trigger que se traga sus propios errores.
+  final int? idNegocio;
+
+  /// Otra versión de una oferta que el prospecto ya tenía de esta unidad: no
+  /// nace un negocio nuevo, se le suma una oferta al que ya había.
+  final bool esRecotizacion;
+
+  const OfertaCreada({
+    required this.idOferta,
+    required this.idPersonaLead,
+    this.prospectoCreado = false,
+    this.idEsquemaSeleccionado,
+    this.ofertasProducto = const [],
+    this.avisos = const [],
+    this.link,
+    this.emailEnviado = false,
+    this.idNegocio,
+    this.esRecotizacion = false,
+  });
+
+  factory OfertaCreada.fromJson(Map<String, dynamic> j) => OfertaCreada(
+    idOferta: intDe(j['id_oferta']) ?? 0,
+    idPersonaLead: intDe(j['id_persona_lead']) ?? 0,
+    prospectoCreado: j['prospecto_creado'] == true,
+    idEsquemaSeleccionado: intDe(j['id_esquema_pago_seleccionado']),
+    ofertasProducto: listaDe(
+      j['ofertas_producto'],
+    ).map(OfertaDeProducto.fromJson).toList(growable: false),
+    avisos: [
+      for (final a in (j['avisos'] as List?) ?? const [])
+        if (a is String && a.trim().isNotEmpty) a.trim(),
+    ],
+    link: j['link_digital'] == null
+        ? null
+        : LinkCliente.fromJson(mapaDe(j['link_digital'])),
+    emailEnviado: j['email_enviado'] == true,
+    idNegocio: intDe(j['id_negocio']),
+    esRecotizacion: j['es_recotizacion'] == true,
+  );
+
+  /// El link se puede compartir con el cliente.
+  bool get tieneLink => link != null && link!.urlCompartible.isNotEmpty;
+}
+
 /// La acción no se puede intentar: la bloquea el estado del negocio, no el
 /// servidor. Se resuelve en el app para no mandar una llamada que va a fallar.
 class AccionNoDisponible implements Exception {
@@ -539,10 +713,7 @@ abstract interface class PipelinePort {
 
   /// Mueve un negocio a una etapa manual. Falla con `stage_not_manual` en las
   /// automáticas y con `pipeline_unavailable` si el ambiente no tiene pipeline.
-  Future<void> moverEtapa({
-    required int idNegocio,
-    required String claveEtapa,
-  });
+  Future<void> moverEtapa({required int idNegocio, required String claveEtapa});
 
   /// Registra (o corrige) la razón por la que un negocio cerrado no avanzó.
   Future<RazonNoAvance> registrarRazonNoAvance({
@@ -562,5 +733,35 @@ abstract interface class PipelinePort {
   Future<LinkCliente> generarLinkCliente({
     required int idOferta,
     String? email,
+  });
+
+  /// Envía la oferta al prospecto por correo DESDE la plataforma (no abre el
+  /// cliente de correo del dispositivo). Falla con `email_invalido` si [email]
+  /// no trae `@` y con `email_failed` si el envío se cae.
+  Future<EnvioCorreoOferta> enviarOfertaPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  });
+
+  /// Genera el PDF de la oferta y devuelve su enlace efímero.
+  /// Hay que consumirlo en el acto: ver [PdfOferta.url].
+  Future<PdfOferta> pdfDeOferta(int idOferta);
+
+  /// Cotiza la unidad [idPropiedad] para un prospecto de la cartera
+  /// ([idPersonaLead]) o para uno recién capturado ([prospecto]).
+  ///
+  /// Los dos juntos salen como `lead_conflict` y ninguno como `missing_lead`.
+  /// [esquemasProducto] mapea id de producto a esquema elegido; vacío deja que
+  /// el servidor tome el primer esquema activo de cada uno.
+  Future<OfertaCreada> crearOferta({
+    required int idPropiedad,
+    int? idEsquemaPago,
+    int? idPersonaLead,
+    ProspectoNuevo? prospecto,
+    Map<int, int?> esquemasProducto,
+    bool crearLink,
+    bool enviarEmail,
+    bool adjuntarPdf,
   });
 }

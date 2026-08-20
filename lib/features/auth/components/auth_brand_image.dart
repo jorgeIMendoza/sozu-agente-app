@@ -48,7 +48,7 @@ class AuthBrandImage extends StatelessWidget {
         assetPath,
         fit: BoxFit.cover,
         // Imagen cuadrada (1600x1600) en columna alta: cover recorta los LADOS,
-        // así que el centro es obligatorio — el logotipo va al centro del arte y
+        // así que el centro es obligatorio: el logotipo va al centro del arte y
         // cualquier otra alineación lo corta a la mitad.
         alignment: Alignment.center,
         width: double.infinity,

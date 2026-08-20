@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/components/nota_html_vista.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -14,12 +15,16 @@ class ActividadProspectoLista extends StatelessWidget {
   /// Abre una nota propia para editarla o borrarla.
   final void Function(ActividadProspecto nota) onAbrirNota;
 
+  /// Abre una nota larga completa, en solo lectura.
+  final void Function(ActividadProspecto nota) onVerNota;
+
   final void Function(AdjuntoNota adjunto) onVerAdjunto;
 
   const ActividadProspectoLista({
     super.key,
     required this.actividad,
     required this.onAbrirNota,
+    required this.onVerNota,
     required this.onVerAdjunto,
   });
 
@@ -42,6 +47,7 @@ class ActividadProspectoLista extends StatelessWidget {
             item: actividad[i],
             ultimo: i == actividad.length - 1,
             onAbrirNota: () => onAbrirNota(actividad[i]),
+            onVerNota: () => onVerNota(actividad[i]),
             onVerAdjunto: onVerAdjunto,
           ),
       ],
@@ -53,12 +59,14 @@ class _Movimiento extends StatelessWidget {
   final ActividadProspecto item;
   final bool ultimo;
   final VoidCallback onAbrirNota;
+  final VoidCallback onVerNota;
   final void Function(AdjuntoNota adjunto) onVerAdjunto;
 
   const _Movimiento({
     required this.item,
     required this.ultimo,
     required this.onAbrirNota,
+    required this.onVerNota,
     required this.onVerAdjunto,
   });
 
@@ -115,28 +123,44 @@ class _Movimiento extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (item.esNotaPropia)
+                    if (item.esNotaPropia) ...[
+                      // Solo cuando la nota no cabe recortada: en una nota de
+                      // una línea, "Ver detalle" no muestra nada nuevo.
+                      if (item.notaLarga)
+                        TextButton(
+                          onPressed: onVerNota,
+                          child: Text(
+                            'Ver detalle',
+                            style: t.text.caption.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: tone.primaryHover,
+                            ),
+                          ),
+                        ),
                       TextButton(
                         onPressed: onAbrirNota,
                         child: Text(
                           'Editar',
                           style: t.text.caption.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: tone.primaryHover,
+                            color: tone.warningFg,
                           ),
                         ),
                       ),
+                    ],
                   ],
                 ),
                 Text(
                   _fechaYHora(context, item.fecha),
                   style: t.text.caption.copyWith(color: tone.fgSubtle),
                 ),
-                if (item.detalle.isNotEmpty) ...[
+                if (item.detalle.isNotEmpty || item.html.isNotEmpty) ...[
                   SizedBox(height: t.space.xxs),
-                  Text(
-                    item.detalle,
-                    style: t.text.caption.copyWith(color: tone.fgMuted),
+                  // Recortado a 3 líneas como en la web: la nota completa se ve
+                  // con "Ver detalle".
+                  NotaHtmlVista.recortada(
+                    html: item.html,
+                    textoPlano: item.detalle,
                   ),
                 ],
                 if (item.adjuntos.isNotEmpty) ...[
