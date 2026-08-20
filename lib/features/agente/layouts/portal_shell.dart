@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,7 +8,6 @@ import 'package:sozu_agente_app/features/auth/providers/auth_provider.dart';
 import 'package:sozu_agente_app/features/agente/home/providers/notificaciones_providers.dart';
 import 'package:sozu_agente_app/features/agente/providers/agente_providers.dart';
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
-import 'package:sozu_agente_app/features/app_download/components/app_download.dart';
 import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
 import 'package:sozu_agente_app/features/agente/home/components/notification_bell.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_shell_widgets.dart';
