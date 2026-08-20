@@ -252,4 +252,49 @@ class FakePipelinePort implements PipelinePort {
       nombreArchivo: 'O_$idOferta.pdf',
     );
   }
+
+  /// Argumentos del último `crearOferta`. Es lo que fija que el prospecto de la
+  /// cartera y el capturado sean excluyentes.
+  ({int? idPersonaLead, ProspectoNuevo? prospecto, int? idEsquemaPago})?
+  ultimaOferta;
+
+  /// Respuesta de `crearOferta`. Cambiarla deja probar el link ausente, los
+  /// avisos del servidor y la recotización sin tocar el resto del doble.
+  Map<String, dynamic> respuestaCrearOferta = const {
+    'ok': true,
+    'id_oferta': 45678,
+    'id_persona_lead': 8901,
+    'prospecto_creado': false,
+    'id_esquema_pago_seleccionado': 57,
+    'ofertas_producto': [],
+    'avisos': [],
+    'link_digital': {
+      'token': 'tok-45678',
+      'url': 'https://admin.sozu.com/oferta/O-045678/tok-45678',
+      'url_preview': 'https://admin.sozu.com/oferta/O-045678',
+    },
+    'email_enviado': false,
+    'id_negocio': 3312,
+    'es_recotizacion': false,
+  };
+
+  @override
+  Future<OfertaCreada> crearOferta({
+    required int idPropiedad,
+    int? idEsquemaPago,
+    int? idPersonaLead,
+    ProspectoNuevo? prospecto,
+    Map<int, int?> esquemasProducto = const {},
+    bool crearLink = true,
+    bool enviarEmail = false,
+    bool adjuntarPdf = false,
+  }) async {
+    ultimaOferta = (
+      idPersonaLead: idPersonaLead,
+      prospecto: prospecto,
+      idEsquemaPago: idEsquemaPago,
+    );
+    await _colgarSiToca('crearOferta:$idPropiedad');
+    return OfertaCreada.fromJson(respuestaCrearOferta);
+  }
 }

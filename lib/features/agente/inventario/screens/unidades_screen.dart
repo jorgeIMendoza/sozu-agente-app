@@ -13,6 +13,7 @@ import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_
 import 'package:sozu_agente_app/features/agente/inventario/screens/planos_unidad_screen.dart';
 import 'package:sozu_agente_app/features/agente/inventario/services/mensajes_error.dart';
 import 'package:sozu_agente_app/features/agente/inventario/services/telemetria_inventario.dart';
+import 'package:sozu_agente_app/features/agente/pipeline/components/nueva_oferta_hoja.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
@@ -288,23 +289,45 @@ class _BuscadorState extends ConsumerState<_Buscador> {
       ),
       puedeGenerarOferta: permisos.generarOferta,
       capacitacionCompleta: onboarding.capacitacionCompleta,
-      // El diálogo de configuración de oferta lo construye otra tanda: el punto
-      // de entrada se queda aquí, con el esquema ya elegido, para que cuando
-      // exista solo haya que cambiar esta línea por su navegación.
-      //
-      // NO se registra `btn_configurar_oferta` mientras no exista: el CTA
-      // contaría intentos de oferta que no pueden convertir, y el embudo
-      // saldría con una caída enorme en el último paso que no es real. Se
-      // enciende junto con el diálogo.
-      onConfigurarOferta: (esquema) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Configurar la oferta todavía se hace desde el portal web.',
-            ),
-          ),
-        );
+      onConfigurarOferta: (esquema) => _configurarOferta(unidad, esquema),
+    );
+  }
+
+  /// Abre la configuración de la oferta con el plan ya elegido en el detalle.
+  ///
+  /// El CTA se emite AQUÍ y no dentro de la hoja: mide la intención de cotizar,
+  /// que es el último paso del embudo, y así cuadra con el de la web.
+  void _configurarOferta(Unidad unidad, EsquemaPago? esquema) {
+    _cta(
+      TelemetriaInventario.btnConfigurarOferta,
+      etiqueta: 'Configurar Oferta',
+      metadata: {
+        'propiedad_id': unidad.id,
+        if (unidad.idDesarrollo != null) 'proyecto_id': unidad.idDesarrollo,
+        if (esquema != null) 'esquema_id': esquema.id,
       },
+    );
+    unawaited(
+      configurarNuevaOferta(
+        context,
+        unidad: UnidadParaOferta(
+          idPropiedad: unidad.id,
+          etiqueta: unidad.etiqueta,
+          desarrollo: unidad.desarrolloNombre ?? '',
+          precioTotal: unidad.precioLista + unidad.totalExtrasConCosto,
+          idEsquemaPago: esquema?.id,
+          esquemaNombre: esquema?.nombre ?? '',
+          extras: [
+            for (final e in unidad.extrasConCosto)
+              ExtraParaOferta(
+                etiqueta: e.etiqueta,
+                esBodega: e.tipo == TipoExtra.bodega,
+                costo: e.costo,
+              ),
+          ],
+        ),
+        onAgendarCapacitacion: () => context.go('/perfil/capacitacion'),
+      ),
     );
   }
 

@@ -91,10 +91,44 @@ String mensajeDeError(Object error) {
         'El prospecto no tiene correo registrado, y el link del cliente se '
             'emite a un correo. Captúralo en Prospectos.',
       'digital_offer_unavailable' =>
-        'La oferta digital no está habilitada en este ambiente.',
+        'La oferta digital no está habilitada en este ambiente. Sin el link no '
+            'hay oferta que compartir, así que no se creó nada.',
+      'capacitacion_pendiente' =>
+        'Para cotizar necesitas haber tomado tu capacitación. Agéndala en tu '
+            'perfil y vuelve a intentarlo.',
+      'unidad_no_disponible' =>
+        'Esa unidad se acaba de apartar o vender. Refresca el inventario y '
+            'elige otra.',
+      'oferta_duplicada' =>
+        'Ya generaste una oferta idéntica hace un momento: búscala en tu '
+            'pipeline en vez de crear otra.',
+      'proyecto_no_permitido' =>
+        'Ese desarrollo no está entre los que puedes vender. Pídele a tu '
+            'supervisor que te lo asigne.',
+      'lead_conflict' =>
+        'Llegaron dos prospectos a la vez. Elige uno de tu cartera o captura '
+            'uno nuevo, no los dos.',
+      'missing_lead' =>
+        'Falta el prospecto: elige uno de tu cartera o captura uno nuevo.',
+      'nombre_invalido' => 'Captura el nombre completo del prospecto.',
+      'telefono_invalido' =>
+        'El teléfono del prospecto debe traer 10 dígitos, sin lada ni '
+            'espacios.',
+      'rfc_invalido' =>
+        'El RFC no tiene el formato que pide el SAT (12 o 13 caracteres). '
+            'Corrígelo o déjalo vacío.',
+      'curp_invalido' =>
+        'La CURP no tiene el formato oficial (18 caracteres). Corrígela o '
+            'déjala vacía.',
+      'tipo_persona_invalido' =>
+        'Elige si el prospecto es persona física o moral.',
+      'invalid_action' => kOfertaSoloEnPortalWeb,
       'feature_unavailable' =>
         'Esta parte del pipeline todavía no está habilitada en el ambiente.',
       'forbidden_role' => 'Tu rol no tiene acceso al pipeline.',
+      'internal_error' =>
+        'Algo se rompió de nuestro lado y la acción no se completó. Intenta de '
+            'nuevo; si sigue, avísale a tu contacto en SOZU.',
       _ => 'No se pudo completar la acción. Intenta de nuevo.',
     };
   }
@@ -124,3 +158,54 @@ String mensajeDeEsquema(
     'Plan guardado. Esta oferta todavía no tiene cuenta de cobranza, así que '
         'no había acuerdos que regenerar.',
 };
+
+// ── Alta de oferta desde el inventario ──────────────────────────────────────
+
+/// Lo que se le dice al agente cuando `crear_oferta` todavía no está desplegada.
+/// Es el mismo mensaje que daba el aviso anterior del botón, para que no cambie
+/// de historia entre versiones.
+const String kOfertaSoloEnPortalWeb =
+    'Generar la oferta desde el app todavía no está habilitado: por ahora se '
+    'configura desde el portal web.';
+
+/// El `agente-pipeline` desplegado no conoce la acción que se le pidió.
+///
+/// Es el caso de degradación honesta: la app puede publicarse antes que la Edge
+/// Function, y un error crudo aquí se leería como una falla del agente.
+bool esAccionNoDesplegada(Object error) =>
+    error is ApiError && error.code == 'invalid_action';
+
+/// El servidor bloqueó la oferta porque falta la capacitación del agente. La
+/// pantalla lo usa para ofrecer el atajo a agendarla.
+bool esCapacitacionPendiente(Object error) =>
+    error is ApiError && error.code == 'capacitacion_pendiente';
+
+/// Mensaje del alta de oferta. Reescribe los códigos cuyo significado cambia en
+/// este camino (aquí `not_owner` habla del PROSPECTO, no de la oferta) y delega
+/// el resto en [mensajeDeError].
+String mensajeDeErrorNuevaOferta(Object error) {
+  if (error is! ApiError) return mensajeDeError(error);
+  return switch (error.code) {
+    'not_owner' =>
+      'Ese prospecto lo trabaja otro asesor, así que no puedes cotizarle. '
+          'Pide el traspaso a tu supervisor.',
+    'not_found' =>
+      'La unidad o el prospecto ya no existe. Refresca el inventario y vuelve '
+          'a intentarlo.',
+    'missing_id' =>
+      'No pudimos identificar la unidad. Cierra la hoja y vuelve a abrirla '
+          'desde el inventario.',
+    'email_invalido' =>
+      'Hace falta un correo válido del prospecto: el link de la oferta se '
+          'emite a un correo. Captúralo y vuelve a intentarlo.',
+    'scheme_mismatch' =>
+      'El plan de pago elegido no aplica a esta unidad. Elige otro o déjalo '
+          'sin plan.',
+    _ => mensajeDeError(error),
+  };
+}
+
+/// Folio de una oferta, con el mismo formato que el pipeline: `O-000123` para la
+/// unidad y `OP-000123` para una bodega o un estacionamiento.
+String folioDeOferta(int idOferta, {bool esProducto = false}) =>
+    '${esProducto ? 'OP' : 'O'}-${idOferta.toString().padLeft(6, '0')}';
