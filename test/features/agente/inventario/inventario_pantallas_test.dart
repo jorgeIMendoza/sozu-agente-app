@@ -416,4 +416,69 @@ void main() {
       expect(find.text('Depto. 1203'), findsOneWidget);
     });
   });
+
+  group('precio con extras', () {
+    testWidgets('la tarjeta cotiza el total, no el precio de lista', (
+      tester,
+    ) async {
+      await pintar(
+        tester,
+        const UnidadesScreen(),
+        port: FakeInventarioPort(),
+        telemetria: FakeTelemetriaPort(),
+      );
+
+      // 3,250,000 de lista + 153,300 de la bodega: el número que se le dice al
+      // cliente. Con el de lista el agente cotizaba de menos.
+      expect(find.text(r'$3,403,300.00'), findsOneWidget);
+      expect(find.text(r'$3,250,000.00'), findsNothing);
+      // La unidad sin extras se sigue pintando con su precio de lista.
+      expect(find.text(r'$2,980,000.00'), findsOneWidget);
+    });
+
+    testWidgets('el detalle desglosa propiedad, extras y total', (
+      tester,
+    ) async {
+      await pintar(
+        tester,
+        const UnidadesScreen(),
+        port: FakeInventarioPort(),
+        telemetria: FakeTelemetriaPort(),
+      );
+
+      await tester.tap(find.text('Depto. 1203'));
+      await asentar(tester);
+
+      expect(find.text('Propiedad'), findsOneWidget);
+      // El de lista sale dos veces: la fila del desglose y el esquema sin
+      // descuento, que se calcula sobre esa misma base.
+      expect(find.text(r'$3,250,000.00'), findsWidgets);
+      expect(find.text('B-12'), findsOneWidget);
+      expect(find.text(r'+$153,300.00'), findsOneWidget);
+      expect(find.text('TOTAL'), findsOneWidget);
+      expect(find.text(r'$3,403,300.00'), findsWidgets);
+      // El extra de costo 0 llega en el payload pero no se desglosa.
+      expect(find.text('E-08'), findsNothing);
+      expect(find.text('PRECIO DE LISTA'), findsNothing);
+    });
+
+    testWidgets('sin extras el bloque de precio no cambia', (tester) async {
+      await pintar(
+        tester,
+        const UnidadesScreen(),
+        port: FakeInventarioPort()..sinExtras = true,
+        telemetria: FakeTelemetriaPort(),
+      );
+
+      expect(find.text(r'$3,250,000.00'), findsOneWidget);
+
+      await tester.tap(find.text('Depto. 1203'));
+      await asentar(tester);
+
+      expect(find.text('PRECIO DE LISTA'), findsOneWidget);
+      expect(find.text('Propiedad'), findsNothing);
+      expect(find.text('TOTAL'), findsNothing);
+      expect(find.text(r'$3,250,000.00'), findsWidgets);
+    });
+  });
 }

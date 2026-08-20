@@ -7,7 +7,7 @@ import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/network_image.dart';
 
 /// Tarjeta de una unidad disponible: foto, número, modelo, desarrollo y nivel,
-/// precio de lista y sus especificaciones.
+/// precio total y sus especificaciones.
 class UnidadCard extends StatelessWidget {
   final Unidad unidad;
   final VoidCallback onTocar;
@@ -73,10 +73,13 @@ class UnidadCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: t.text.caption.copyWith(color: tone.fgMuted),
                   ),
-                  if (u.precioLista > 0) ...[
+                  // El total (lista + bodegas + estacionamientos) es el número
+                  // que el agente le dice al cliente; el de lista se cotizaba
+                  // de menos.
+                  if (u.precioAlCliente > 0) ...[
                     SizedBox(height: t.space.xs),
                     Text(
-                      formatMXN(u.precioLista),
+                      formatMXN(u.precioAlCliente),
                       style: t.text.label.copyWith(
                         fontWeight: FontWeight.w700,
                         color: tone.primaryHover,
@@ -119,9 +122,7 @@ List<Widget> especificacionesDeUnidad(Unidad u, {bool breves = false}) => [
   if (u.banos > 0)
     InventarioEspec(
       icon: Icons.bathtub_outlined,
-      texto: breves
-          ? '${u.banos}'
-          : '${u.banos} baño${u.banos > 1 ? 's' : ''}',
+      texto: breves ? '${u.banos}' : '${u.banos} baño${u.banos > 1 ? 's' : ''}',
     ),
   if (!breves && u.medioBanos > 0)
     InventarioEspec(

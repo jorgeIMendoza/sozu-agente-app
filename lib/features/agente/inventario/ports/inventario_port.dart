@@ -55,7 +55,9 @@ class DesarrolloResumen {
         nombre: (j['nombre'] ?? '') as String,
         ubicacion: (j['ubicacion'] ?? '') as String,
         imagenUrl: _texto(j['imagen_url']),
-        precioDesde: j['precio_desde'] == null ? null : numDe(j['precio_desde']),
+        precioDesde: j['precio_desde'] == null
+            ? null
+            : numDe(j['precio_desde']),
         unidadesDisponibles: intDe(j['unidades_disponibles']) ?? 0,
         totalUnidades: intDe(j['total_unidades']) ?? 0,
         avancePct: intDe(j['avance_pct']) ?? 0,
@@ -176,12 +178,11 @@ class VideoAvance {
 
   const VideoAvance({required this.urlEmbed, this.nombre, this.fecha});
 
-  factory VideoAvance.fromJson(Map<String, dynamic> j) =>
-      VideoAvance(
-        urlEmbed: (j['url_embed'] ?? '') as String,
-        nombre: _texto(j['nombre']),
-        fecha: _texto(j['fecha']),
-      );
+  factory VideoAvance.fromJson(Map<String, dynamic> j) => VideoAvance(
+    urlEmbed: (j['url_embed'] ?? '') as String,
+    nombre: _texto(j['nombre']),
+    fecha: _texto(j['fecha']),
+  );
 
   /// Id del video dentro de la URL incrustada. Vacío si no se puede extraer.
   String get idVideo {
@@ -280,23 +281,20 @@ class ModeloDesarrollo {
     this.multimedia = const [],
   });
 
-  factory ModeloDesarrollo.fromJson(Map<String, dynamic> j) =>
-      ModeloDesarrollo(
-        id: intDe(j['id']) ?? 0,
-        nombre: (j['nombre'] ?? '') as String,
-        descripcion: _texto(j['descripcion']),
-        m2: j['m2'] == null ? null : numDe(j['m2']),
-        recamaras: intDe(j['recamaras']) ?? 0,
-        banos: intDe(j['banos']) ?? 0,
-        medioBanos: intDe(j['medio_banos']) ?? 0,
-        precioDesde: j['precio_desde'] == null
-            ? null
-            : numDe(j['precio_desde']),
-        disponibles: intDe(j['disponibles']) ?? 0,
-        imagenUrl: _texto(j['imagen_url']),
-        planoUrl: _texto(j['plano_url']),
-        multimedia: _textos(j['multimedia']),
-      );
+  factory ModeloDesarrollo.fromJson(Map<String, dynamic> j) => ModeloDesarrollo(
+    id: intDe(j['id']) ?? 0,
+    nombre: (j['nombre'] ?? '') as String,
+    descripcion: _texto(j['descripcion']),
+    m2: j['m2'] == null ? null : numDe(j['m2']),
+    recamaras: intDe(j['recamaras']) ?? 0,
+    banos: intDe(j['banos']) ?? 0,
+    medioBanos: intDe(j['medio_banos']) ?? 0,
+    precioDesde: j['precio_desde'] == null ? null : numDe(j['precio_desde']),
+    disponibles: intDe(j['disponibles']) ?? 0,
+    imagenUrl: _texto(j['imagen_url']),
+    planoUrl: _texto(j['plano_url']),
+    multimedia: _textos(j['multimedia']),
+  );
 }
 
 /// Render o vista comercial del desarrollo.
@@ -430,14 +428,12 @@ class FichaDesarrollo {
       avance: AvanceObra.fromJson(mapaDe(j['avance'])),
       amenidades: listaDe(j['amenidades']).map(Amenidad.fromJson).toList(),
       modelos: listaDe(j['modelos']).map(ModeloDesarrollo.fromJson).toList(),
-      vistas: listaDe(j['vistas'])
-          .map(VistaDesarrollo.fromJson)
-          .where((v) => v.url.isNotEmpty)
-          .toList(),
-      galeria: listaDe(j['multimedia'])
-          .map(ImagenGaleria.fromJson)
-          .where((m) => m.url.isNotEmpty)
-          .toList(),
+      vistas: listaDe(
+        j['vistas'],
+      ).map(VistaDesarrollo.fromJson).where((v) => v.url.isNotEmpty).toList(),
+      galeria: listaDe(
+        j['multimedia'],
+      ).map(ImagenGaleria.fromJson).where((m) => m.url.isNotEmpty).toList(),
       puntosInteres: listaDe(
         j['puntos_interes'],
       ).map(PuntoInteres.fromJson).toList(),
@@ -517,9 +513,9 @@ class EsquemaPago {
     numeroMensualidades: intDe(j['numero_mensualidades']) ?? 0,
     porcentajeEntrega: numDe(j['porcentaje_entrega']),
     numeroPagosEnganche: intDe(j['numero_pagos_enganche']),
-    tramos: listaDe(j['tramos_mensualidad'])
-        .map(TramoMensualidad.fromJson)
-        .toList(),
+    tramos: listaDe(
+      j['tramos_mensualidad'],
+    ).map(TramoMensualidad.fromJson).toList(),
     esManual: j['es_manual'] == true,
     orden: intDe(j['orden']),
   );
@@ -559,6 +555,46 @@ class EntregaDesarrollo {
       );
 }
 
+/// Tipo de extra que se cobra junto con la unidad.
+enum TipoExtra {
+  bodega,
+  estacionamiento;
+
+  /// Lee la clave del backend (`"bodega"` / `"estacionamiento"`). Cualquier otro
+  /// valor cae en estacionamiento, igual que el portal web.
+  static TipoExtra desdeClave(Object? v) =>
+      v == 'bodega' ? TipoExtra.bodega : TipoExtra.estacionamiento;
+}
+
+/// Bodega o estacionamiento de una unidad, con su costo ya resuelto por el
+/// servidor. Los de costo 0 SÍ llegan: dicen que la unidad trae el producto.
+class ExtraUnidad {
+  /// Id de la bodega o del estacionamiento; solo es único junto con [tipo].
+  final int id;
+
+  final TipoExtra tipo;
+  final String? nombre;
+  final double costo;
+
+  const ExtraUnidad({
+    required this.id,
+    required this.tipo,
+    this.nombre,
+    this.costo = 0,
+  });
+
+  factory ExtraUnidad.fromJson(Map<String, dynamic> j) => ExtraUnidad(
+    id: intDe(j['id']) ?? 0,
+    tipo: TipoExtra.desdeClave(j['tipo']),
+    nombre: _texto(j['nombre']),
+    costo: numDe(j['costo']),
+  );
+
+  /// Etiqueta del extra en el desglose; sin nombre capturado, su tipo.
+  String get etiqueta =>
+      nombre ?? (tipo == TipoExtra.bodega ? 'Bodega' : 'Estacionamiento');
+}
+
 /// Unidad disponible del inventario.
 class Unidad {
   final int id;
@@ -579,6 +615,17 @@ class Unidad {
   final int bodegas;
   final int estacionamientos;
   final List<String> tiposEstacionamiento;
+
+  /// Precio de lista más los extras: lo que se le cobra al cliente. 0 cuando el
+  /// servidor no lo manda; para pintar se usa [precioAlCliente].
+  final double precioTotal;
+
+  final double extrasTotal;
+  final double extrasBodegas;
+  final double extrasEstacionamientos;
+
+  /// Desglose de bodegas y estacionamientos, incluidos los de costo 0.
+  final List<ExtraUnidad> extras;
 
   /// Imagen efectiva de la tarjeta: las de la unidad si tiene, si no las del
   /// modelo. La resuelve el servidor.
@@ -605,6 +652,11 @@ class Unidad {
     this.bodegas = 0,
     this.estacionamientos = 0,
     this.tiposEstacionamiento = const [],
+    this.precioTotal = 0,
+    this.extrasTotal = 0,
+    this.extrasBodegas = 0,
+    this.extrasEstacionamientos = 0,
+    this.extras = const [],
     this.imagenes = const [],
     this.esquemasPago = const [],
   });
@@ -628,13 +680,34 @@ class Unidad {
     bodegas: intDe(j['bodegas_count']) ?? 0,
     estacionamientos: intDe(j['estacionamientos_count']) ?? 0,
     tiposEstacionamiento: _textos(j['estacionamientos_tipos']),
+    precioTotal: numDe(j['precio_total']),
+    extrasTotal: numDe(j['extras_total']),
+    extrasBodegas: numDe(j['extras_bodegas']),
+    extrasEstacionamientos: numDe(j['extras_estacionamientos']),
+    extras: listaDe(j['extras']).map(ExtraUnidad.fromJson).toList(),
     // Las imágenes llegan como objetos {id, url}: aquí solo interesa la URL.
     imagenes: _urls(j['imagenes']),
-    esquemasPago: listaDe(j['esquemas_pago']).map(EsquemaPago.fromJson).toList(),
+    esquemasPago: listaDe(
+      j['esquemas_pago'],
+    ).map(EsquemaPago.fromJson).toList(),
   );
 
   /// Etiqueta de la unidad para títulos y tarjetas.
   String get etiqueta => (numero ?? '').isNotEmpty ? numero! : '$id';
+
+  /// Precio que se le cotiza al cliente: [precioTotal] cuando el servidor lo
+  /// manda, [precioLista] si no (payload sin extras).
+  double get precioAlCliente => precioTotal > 0 ? precioTotal : precioLista;
+
+  /// Extras que suman al precio; los de costo 0 no se desglosan porque no
+  /// cambian el total y solo alargan la lista.
+  List<ExtraUnidad> get extrasConCosto =>
+      extras.where((e) => e.costo > 0).toList(growable: false);
+
+  /// Suma de los extras desglosables. Se calcula de [extrasConCosto] y no de
+  /// [extrasTotal] para que el desglose y el total que lo cierra cuadren.
+  double get totalExtrasConCosto =>
+      extrasConCosto.fold(0, (suma, e) => suma + e.costo);
 }
 
 /// Valores disponibles para armar los filtros, calculados por el servidor sobre
@@ -1024,10 +1097,9 @@ List<String> _textos(Object? v) {
 }
 
 /// URLs de una lista de objetos `{id, url}`, sin vacíos.
-List<String> _urls(Object? v) => listaDe(v)
-    .map((e) => _texto(e['url']))
-    .whereType<String>()
-    .toList(growable: false);
+List<String> _urls(Object? v) => listaDe(
+  v,
+).map((e) => _texto(e['url'])).whereType<String>().toList(growable: false);
 
 /// Niveles ordenados numéricamente cuando se puede; el resto, alfabético al
 /// final. `numero_piso` es TEXT, así que "10" y "2" se comparan como cadenas y
