@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/features/agente/citas/providers/citas_providers.dart';
 import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
+import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/compartir_negocio.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/pipeline_modal.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
@@ -130,13 +132,21 @@ class _NuevaOfertaHojaState extends ConsumerState<_NuevaOfertaHoja> {
   String _lada = 'MX';
   String _tipoPersona = 'pf';
 
-  /// Encendido por omisión: sin link no hay oferta digital que mandar.
+  /// Encendido por omisión: sin link no hay oferta digital que mandar. Solo
+  /// aplica con permiso de oferta digital; sin él se queda apagado y la casilla
+  /// no se ofrece (ver [_puedeOfertaDigital]).
   bool _crearLink = true;
 
   bool _enviarEmail = false;
   bool _adjuntarPdf = false;
 
   bool _creando = false;
+
+  /// ¿El rol puede emitir la oferta digital? El permiso llega en la sesión
+  /// (`generar_oferta_digital`, por omisión falso, igual que en la web).
+  bool get _puedeOfertaDigital => ref
+      .watch(permisosVistaProvider(VistaAgente.inventario))
+      .generarOfertaDigital;
 
   /// Fallo del último intento. Se pinta DENTRO de la hoja: un toast se va antes
   /// de que el agente lo lea y cerrar la hoja perdería lo capturado.
@@ -354,34 +364,42 @@ class _NuevaOfertaHojaState extends ConsumerState<_NuevaOfertaHoja> {
         ),
       ],
 
-      SizedBox(height: t.space.md),
-      const SSectionLabel(text: 'Cómo se le entrega'),
-      _Casilla(
-        etiqueta: 'Generar el link para el cliente',
-        valor: _crearLink,
-        habilitado: !_creando,
-        onCambio: (v) => setState(() {
-          _crearLink = v;
-          _error = null;
-        }),
-      ),
-      _Casilla(
-        etiqueta: 'Mandárselo por correo',
-        valor: _enviarEmail,
-        habilitado: !_creando,
-        onCambio: (v) => setState(() {
-          _enviarEmail = v;
-          if (!v) _adjuntarPdf = false;
-          _error = null;
-        }),
-      ),
-      if (_enviarEmail)
+      // El permiso `generar_oferta_digital` decide si el agente puede emitir el
+      // link del cliente, igual que en la web. Sin él no se ofrece ni se manda:
+      // se parseaba en la sesión y no lo leía nadie, así que la app prometía una
+      // oferta digital a quien no la tiene otorgada.
+      if (_puedeOfertaDigital) ...[
+        SizedBox(height: t.space.md),
+        const SSectionLabel(text: 'Cómo se le entrega'),
         _Casilla(
-          etiqueta: 'Adjuntar el PDF de la oferta',
-          valor: _adjuntarPdf,
+          etiqueta: 'Generar el link para el cliente',
+          valor: _crearLink,
           habilitado: !_creando,
-          onCambio: (v) => setState(() => _adjuntarPdf = v),
+          onCambio: (v) => setState(() {
+            _crearLink = v;
+            _error = null;
+          }),
         ),
+        // Mandarla por correo tambien depende del link: la function contesta 500
+        // si no hay ni link ni adjunto, asi que sin oferta digital no se ofrece.
+        _Casilla(
+          etiqueta: 'Mandárselo por correo',
+          valor: _enviarEmail,
+          habilitado: !_creando,
+          onCambio: (v) => setState(() {
+            _enviarEmail = v;
+            if (!v) _adjuntarPdf = false;
+            _error = null;
+          }),
+        ),
+        if (_enviarEmail)
+          _Casilla(
+            etiqueta: 'Adjuntar el PDF de la oferta',
+            valor: _adjuntarPdf,
+            habilitado: !_creando,
+            onCambio: (v) => setState(() => _adjuntarPdf = v),
+          ),
+      ],
 
       SizedBox(height: t.space.md),
       _Total(precio: u.precioTotal, conExtras: u.extras.isNotEmpty),
@@ -774,9 +792,12 @@ class _NuevaOfertaHojaState extends ConsumerState<_NuevaOfertaHoja> {
                     rfc: _rfc.text,
                     curp: _curp.text,
                   ),
-            crearLink: _crearLink,
-            enviarEmail: _enviarEmail,
-            adjuntarPdf: _adjuntarPdf,
+            // Sin permiso van apagadas de todos modos: el servidor no valida
+            // `generar_oferta_digital`, asi que el candado del cliente es el
+            // unico que hay y no puede depender solo de esconder la casilla.
+            crearLink: _puedeOfertaDigital && _crearLink,
+            enviarEmail: _puedeOfertaDigital && _enviarEmail,
+            adjuntarPdf: _puedeOfertaDigital && _adjuntarPdf,
           );
       if (!mounted) return;
       setState(() {
