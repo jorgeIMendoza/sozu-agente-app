@@ -291,14 +291,18 @@ class _BuscadorState extends ConsumerState<_Buscador> {
       // El diálogo de configuración de oferta lo construye otra tanda: el punto
       // de entrada se queda aquí, con el esquema ya elegido, para que cuando
       // exista solo haya que cambiar esta línea por su navegación.
+      //
+      // NO se registra `btn_configurar_oferta` mientras no exista: el CTA
+      // contaría intentos de oferta que no pueden convertir, y el embudo
+      // saldría con una caída enorme en el último paso que no es real. Se
+      // enciende junto con el diálogo.
       onConfigurarOferta: (esquema) {
-        _cta(
-          TelemetriaInventario.btnConfigurarOferta,
-          etiqueta: 'Configurar Oferta',
-          metadata: identificadores,
-        );
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Disponible en la siguiente tanda')),
+          const SnackBar(
+            content: Text(
+              'Configurar la oferta todavía se hace desde el portal web.',
+            ),
+          ),
         );
       },
     );

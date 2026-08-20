@@ -373,23 +373,12 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
                 onTransferir: (d) => _transferir(p, d),
               ),
             ),
-        if (cartera.valueOrNull?.modeloDeTransicion == true &&
-            filtrados.isNotEmpty) ...[
-          SizedBox(height: t.space.xs),
-          Row(
-            children: [
-              Icon(Icons.people_outline, size: 14, color: tone.fgSubtle),
-              SizedBox(width: t.space.xxs),
-              Expanded(
-                child: Text(
-                  'Leyendo del modelo de transición (dueño por agente + '
-                  'atribución del CRM).',
-                  style: t.text.caption.copyWith(color: tone.fgSubtle),
-                ),
-              ),
-            ],
-          ),
-        ],
+        // Aquí vivía el pie "Leyendo del modelo de transición". Se quitó porque
+        // era una constante disfrazada de aviso: `modeloDeTransicion` sale de
+        // `via_rpc == false`, y la app nunca manda `usar_rpc`, así que el
+        // servidor siempre responde por la vía directa y el pie salía en TODA
+        // cartera no vacía. En la web aparece rara vez, y su texto ("dueño por
+        // agente + atribución del CRM") no le dice nada al agente.
       ],
     ];
   }

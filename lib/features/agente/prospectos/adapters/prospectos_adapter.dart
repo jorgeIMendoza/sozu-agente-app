@@ -104,8 +104,13 @@ class ProspectosAdapter implements ProspectosPort {
   }
 
   /// El servicio de prospectos no publica el catálogo de desarrollos, así que
-  /// se toma del inventario del agente, que ya lo devuelve filtrado por sus
-  /// accesos. Es la misma lista que la web ofrece en el alta del prospecto.
+  /// se toma del inventario del agente, ya filtrado por sus accesos.
+  ///
+  /// NO es la misma lista que la web: el inventario solo devuelve desarrollos
+  /// con `publicar = true` y con unidades cargadas, mientras la web ofrece todo
+  /// proyecto activo con acceso. Un desarrollo accesible pero despublicado, o
+  /// sin inventario, se puede ligar desde la web y desde aquí no. Se cierra
+  /// cuando `agente-prospectos` publique su propio catálogo.
   @override
   Future<List<DesarrolloVinculable>> desarrollosVinculables() async {
     final res = await _fn.call(

@@ -70,7 +70,7 @@ mitades `Portal*`, cuyas primitivas ya existen y las contemplan por variantes.
 | `SozuProgressBar` | `PortalProgressBar` | 14 | bajo |
 | `StatusBadge` | `PortalStatusChip` | 56 | medio (mapeo estado→color) |
 | `AppCard` | `PortalCard` | 144 | medio-alto |
-| `property_card` | `portal_property_card` | 5 | alto (1,129 líneas) |
+| `property_card` | (borrado) | 0 | resuelto: `portal_property_card` era codigo muerto |
 
 Objetivo: un componente con variantes, y el responsive como **valor** en vez de
 rama del árbol.

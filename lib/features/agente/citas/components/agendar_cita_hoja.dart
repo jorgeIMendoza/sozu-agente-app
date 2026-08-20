@@ -6,6 +6,7 @@ import 'package:sozu_agente_app/features/agente/citas/providers/citas_providers.
 import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/citas/services/textos_de_agenda.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Ancho del diálogo en pantalla ancha; el mismo del modal del portal web.
@@ -313,10 +314,21 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
       ),
       data: (lista) {
         if (lista.isEmpty) {
-          return const SEmptyState.card(
+          // El alta se abre ENCIMA de esta hoja y al cerrarse la cartera se
+          // recarga sola, así que el selector aparece sin salir del agendado.
+          // Sin este botón la hoja era un callejón: decía "captura un
+          // prospecto" y no ofrecía cómo.
+          return SEmptyState.card(
             icon: Icons.person_off_outlined,
             title: 'Todavía no tienes prospectos',
-            message: 'Captura un prospecto y vuelve a agendar su visita.',
+            message: 'Captura uno para poder agendarle una visita.',
+            action: SButton(
+              label: 'Crear prospecto',
+              onPressed: () async {
+                await editarProspecto(context);
+                ref.invalidate(carteraProspectosProvider);
+              },
+            ),
           );
         }
         if (lista.length > _maxProspectosEnLista) {

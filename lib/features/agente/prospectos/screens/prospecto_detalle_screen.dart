@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/core/open_document.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
 import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
 import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
@@ -246,6 +247,10 @@ class _ProspectoDetalleScreenState
                       ),
                     );
                     if (cita == null || !context.mounted) return;
+                    // La agenda de Inicio no es autoDispose y solo se
+                    // invalidaba desde Inicio: sin esto, la cita recién creada
+                    // no aparecía ahí hasta recargar la app.
+                    ref.invalidate(resumenInicioProvider);
                     await recargar();
                     if (!context.mounted) return;
                     _aviso(context, cita.aviso ?? 'Cita agendada.');

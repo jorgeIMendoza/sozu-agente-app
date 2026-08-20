@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/core/portal_theme.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
 import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
 import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/amenidades_grid.dart';
@@ -198,11 +199,15 @@ class _Ficha extends ConsumerWidget {
   /// Abre el agendado con el desarrollo ya resuelto y avisa cómo quedó.
   Future<void> _agendarCita(
     BuildContext context,
+    WidgetRef ref,
     DesarrolloParaCita desarrollo,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final cita = await mostrarAgendarCita(context, desarrollo: desarrollo);
     if (cita == null) return;
+    // La agenda de Inicio no es autoDispose y solo se invalidaba desde Inicio:
+    // sin esto, la cita recién creada no aparecía ahí hasta recargar.
+    ref.invalidate(resumenInicioProvider);
     messenger.showSnackBar(
       SnackBar(content: Text(cita.aviso ?? 'Cita agendada.')),
     );
@@ -397,6 +402,7 @@ class _Ficha extends ConsumerWidget {
                           unawaited(
                             _agendarCita(
                               context,
+                              ref,
                               DesarrolloParaCita(id: d.id, nombre: d.nombre),
                             ),
                           );
