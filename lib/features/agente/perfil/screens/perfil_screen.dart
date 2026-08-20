@@ -232,10 +232,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
       ),
       PerfilFilaSeccion(
         titulo: 'Capacitación',
-        // La web dice "Agenda y completa tu capacitación", pero en el app la
-        // cita todavía no se agenda: prometerlo aquí manda al agente a buscar
-        // un botón que no existe.
-        descripcion: 'Tu avance y tus citas agendadas',
+        descripcion: 'Agenda y completa tu capacitación',
         estado: activacion.paso('training')?.estado,
         onTap: () =>
             irAEtapa('training', 'Capacitación', '/perfil/capacitacion'),

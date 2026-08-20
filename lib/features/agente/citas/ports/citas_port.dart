@@ -1,7 +1,7 @@
 import 'package:sozu_agente_app/shared/json.dart';
 
-/// Tipo de cita de la capacitación del agente. `agente-citas` la excluye a
-/// propósito: se agenda desde el expediente, no desde la agenda de showroom.
+/// Tipo de cita de la capacitación del agente. Va por su propia agenda: el
+/// asistente es el AGENTE y no un prospecto.
 const int kTipoCitaCapacitacion = 1;
 
 /// Horario libre del showroom: la hora y de qué agenda sale.
@@ -129,17 +129,72 @@ class CitaAgendada {
       idCita: intDe(cita['id']),
       fecha: cita['fecha'] as String?,
       horaInicio: cita['hora_inicio'] as String?,
-      enlaceReunion: j['meet_link'] as String?,
+      // La capacitación devuelve la fila cruda de la cita: cuando el enlace no
+      // viene en la raíz, está en la propia fila.
+      enlaceReunion:
+          (j['meet_link'] as String?) ?? (cita['google_meet_link'] as String?),
       aviso: j['aviso'] as String?,
     );
   }
 }
 
-/// Agenda de citas de showroom y visita del Portal del Agente: qué cupos hay
-/// libres y el alta o el cambio de una cita.
+/// Lo que el agente eligió para su capacitación: el cupo y el desarrollo del
+/// que salió.
 ///
-/// La capacitación (tipo de cita 1) NO pasa por aquí: tiene su propio flujo en
-/// el expediente del agente y el servidor la rechaza en esta ruta.
+/// No lleva a quién se capacita: el servidor lo deriva del JWT. Mandar la
+/// identidad sería la vía para agendarle a otro agente.
+class SolicitudDeCapacitacion {
+  /// `YYYY-MM-DD`.
+  final String fecha;
+
+  /// `HH:MM`.
+  final String hora;
+
+  final int idConfiguracion;
+
+  /// Desarrollo al que cuelga la configuración; opcional para el servidor.
+  final int? idDesarrollo;
+
+  const SolicitudDeCapacitacion({
+    required this.fecha,
+    required this.hora,
+    required this.idConfiguracion,
+    this.idDesarrollo,
+  });
+}
+
+/// Resultado del "Ya acudí".
+///
+/// El servidor tiene DOS formas de éxito y son excluyentes: el reporte nuevo
+/// ([idCita] + [pendienteDeConfirmacion]) y el que ya existía de ese día
+/// ([yaReportada]). Es idempotente por día.
+class AsistenciaReportada {
+  /// Id del reporte recién creado; null cuando ya había uno del mismo día.
+  final int? idCita;
+
+  /// Ya había un reporte de esa fecha: el servidor no duplicó nada.
+  final bool yaReportada;
+
+  /// Falta que un administrador la confirme para que cuente como capacitación.
+  final bool pendienteDeConfirmacion;
+
+  const AsistenciaReportada({
+    this.idCita,
+    this.yaReportada = false,
+    this.pendienteDeConfirmacion = false,
+  });
+
+  factory AsistenciaReportada.desdeJson(Map<String, dynamic> j) =>
+      AsistenciaReportada(
+        idCita: intDe(j['id']),
+        yaReportada: j['ya_reportada'] == true,
+        pendienteDeConfirmacion: j['pendiente_confirmacion'] == true,
+      );
+}
+
+/// Agenda de citas del Portal del Agente: qué cupos hay libres y el alta o el
+/// cambio de una cita, tanto de showroom y visita (el prospecto es el asistente)
+/// como de capacitación (el asistente es el propio agente).
 ///
 /// La instancia queda atada al agente que se está viendo (el propio, o el que
 /// impersona un administrador), así que ningún método recibe ese destinatario.
@@ -155,4 +210,21 @@ abstract interface class CitasPort {
   /// Mueve la cita activa del prospecto en ese desarrollo al nuevo cupo. El
   /// servidor decide si crea o actualiza, igual que el portal web.
   Future<CitaAgendada> reagendar(SolicitudDeCita solicitud);
+
+  /// Días con cupo de capacitación del desarrollo. [fecha] (`YYYY-MM-DD`)
+  /// recorta la respuesta a ese día.
+  Future<List<DiaDisponible>> disponibilidadCapacitacion(
+    int idDesarrollo, {
+    String? fecha,
+  });
+
+  /// Agenda la capacitación del agente en el cupo elegido.
+  ///
+  /// Mueve la cita que ya tenía cuando el cupo nuevo es de la MISMA
+  /// configuración; con otra configuración el servidor deja las dos, igual que
+  /// el portal web.
+  Future<CitaAgendada> agendarCapacitacion(SolicitudDeCapacitacion solicitud);
+
+  /// Reporta que el agente ya acudió a capacitación en [fecha] (`YYYY-MM-DD`).
+  Future<AsistenciaReportada> reportarAsistencia(String fecha);
 }

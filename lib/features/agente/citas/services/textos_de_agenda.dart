@@ -90,9 +90,24 @@ String mensajeErrorAgenda(Object? error) {
     'schedule_failed' =>
       'No pudimos crear la cita en el calendario. Intenta de nuevo.',
     'fecha_invalida' || 'hora_invalida' => 'Revisa la fecha y el horario.',
+    'missing_id_configuracion' ||
+    'missing_id_proyecto' => 'Vuelve a elegir la fecha y el horario.',
+    'server_misconfigured' =>
+      'El agendado está fuera de servicio. Avisa a tu Asesor SOZU.',
     'tipo_cita_no_soportado' =>
       'Este tipo de cita no se agenda desde el portal.',
     'forbidden_role' || 'forbidden' => 'Tu usuario no puede agendar citas.',
     _ => 'No pudimos agendar la cita. Intenta de nuevo.',
   };
 }
+
+/// Traducción de los códigos del "Ya acudí" de capacitación.
+///
+/// Aparte de [mensajeErrorAgenda] porque su mensaje genérico habla de agendar,
+/// y aquí no se agendó nada: se reportó una asistencia.
+String mensajeErrorAsistencia(Object? error) => switch (error) {
+  ApiError(code: 'fecha_invalida') => 'Revisa la fecha en la que acudiste.',
+  ApiError(code: 'network_error') => 'Revisa tu conexión e intenta de nuevo.',
+  ApiError(code: 'unauthorized') => 'Tu sesión expiró. Vuelve a entrar.',
+  _ => 'No pudimos reportar tu asistencia. Intenta de nuevo.',
+};

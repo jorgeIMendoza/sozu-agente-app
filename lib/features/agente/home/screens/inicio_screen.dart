@@ -36,9 +36,14 @@ const double _anchoContenido = 1040;
 const String _rutaComisiones = '/comisiones';
 const String _rutaPerfil = '/perfil';
 
-/// La capacitación del agente no se reagenda desde la agenda de showroom: tiene
-/// su propio flujo en el expediente, igual que en el portal web.
+/// La capacitación del agente se reagenda en su propia pantalla, igual que en el
+/// portal web.
 const String _rutaCapacitacion = '/perfil/capacitacion';
+
+/// Por qué el reagendado de una capacitación sale de Inicio.
+const String _notaCapacitacion =
+    'Tu capacitación se reagenda en Perfil · Capacitación, donde ves todas tus '
+    'citas.';
 
 /// Identificadores de telemetría, IDÉNTICOS a los del portal web: si difieren,
 /// el mismo botón cuenta dos veces en el tablero de CTA.
@@ -467,9 +472,12 @@ class _Citas extends ConsumerWidget {
 
   const _Citas({required this.citas, required this.enmascarar});
 
-  /// Reagendar es agendar de nuevo sobre el mismo prospecto y desarrollo, con
-  /// una excepción que también hace la web: la capacitación del agente no vive
-  /// en la agenda de showroom, así que se manda a su paso del expediente.
+  /// Reagendar es agendar de nuevo sobre el mismo prospecto y desarrollo.
+  ///
+  /// La capacitación va a su pantalla: `agendar_capacitacion` MUEVE la cita solo
+  /// si el cupo nuevo es de la misma configuración, y aquí no la sabemos
+  /// (`CitaAgente` trae el nombre de la agenda, no su id), así que reagendar
+  /// desde Inicio podría dejarle dos capacitaciones sin verlas.
   void _reagendar(BuildContext context, WidgetRef ref, CitaAgente cita) {
     if (cita.idTipoCita == kTipoCitaCapacitacion) {
       context.push(_rutaCapacitacion);
@@ -516,6 +524,9 @@ class _Citas extends ConsumerWidget {
       cita: cita,
       nombreProspecto: enmascarar(cita.prospectoNombre),
       onReagendar: () => _reagendar(context, ref, cita),
+      notaReagendar: cita.idTipoCita == kTipoCitaCapacitacion
+          ? _notaCapacitacion
+          : null,
       onCancelar: () async {
         try {
           await ref.read(inicioPortProvider).cancelarCita(cita.id);

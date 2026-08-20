@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:sozu_agente_app/features/agente/citas/components/piezas_de_agenda.dart';
 import 'package:sozu_agente_app/features/agente/citas/ports/citas_port.dart';
 import 'package:sozu_agente_app/features/agente/citas/providers/citas_providers.dart';
 import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
@@ -11,10 +12,6 @@ import 'package:sozu_agente_app/ui/ui.dart';
 
 /// Ancho del diálogo en pantalla ancha; el mismo del modal del portal web.
 const double _anchoDialogo = 480;
-
-/// Fechas que se ofrecen como pastilla antes de mandar al calendario. La
-/// disponibilidad llega a 60 días: pintarlas todas es un muro de pastillas.
-const int _maxFechasVisibles = 8;
 
 /// Umbral para cambiar el selector de prospecto por un buscador, igual que el
 /// portal web.
@@ -204,7 +201,7 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Encabezado(
+          EncabezadoDeHoja(
             titulo: widget.reagendar ? 'Reagendar cita' : 'Agendar cita',
             subtitulo: widget.reagendar
                 ? 'Elige la nueva fecha y el nuevo horario'
@@ -269,7 +266,11 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
 
     return [
       if (_error case final mensaje?) ...[
-        _Aviso(icono: Icons.error_outline, texto: mensaje, esError: true),
+        AvisoDeAgenda(
+          icono: Icons.error_outline,
+          texto: mensaje,
+          esError: true,
+        ),
         SizedBox(height: t.space.md),
       ],
 
@@ -372,7 +373,7 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
       );
     }
     if (opciones.isEmpty) {
-      return _Aviso(
+      return AvisoDeAgenda(
         icono: Icons.info_outline,
         texto:
             'Este prospecto no tiene desarrollos de interés. Agrégalos en su '
@@ -426,7 +427,7 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
         final dia = dias.where((d) => d.fecha == _fecha).firstOrNull;
         return [
           SFieldLabel('Fecha', requerido: true, habilitado: !_guardando),
-          _Fechas(
+          FechasDisponibles(
             dias: dias,
             fecha: _fecha,
             habilitado: !_guardando,
@@ -439,7 +440,7 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
               requerido: true,
               habilitado: !_guardando,
             ),
-            _Horarios(
+            HorariosDisponibles(
               dia: dia,
               hora: _hora,
               idConfiguracion: _idConfiguracion,
@@ -450,239 +451,6 @@ class _AgendarCitaState extends ConsumerState<_AgendarCita> {
           ],
         ];
       },
-    );
-  }
-}
-
-/// Encabezado de la hoja: título, subtítulo y la salida.
-class _Encabezado extends StatelessWidget {
-  final String titulo;
-  final String subtitulo;
-  final bool habilitado;
-
-  const _Encabezado({
-    required this.titulo,
-    required this.subtitulo,
-    this.habilitado = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    final tone = t.color;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(t.space.lg, t.space.md, t.space.xs, 0),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(t.space.xs),
-            decoration: BoxDecoration(
-              color: tone.surfaceAlt,
-              borderRadius: t.radius.smBorder,
-            ),
-            child: Icon(
-              Icons.event_available_outlined,
-              size: _iconoChico,
-              color: tone.fgMuted,
-            ),
-          ),
-          SizedBox(width: t.space.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  titulo,
-                  style: t.text.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: tone.fg,
-                  ),
-                ),
-                Text(
-                  subtitulo,
-                  style: t.text.caption.copyWith(color: tone.fgSubtle),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Cerrar',
-            icon: const Icon(Icons.close, size: _iconoMedio),
-            color: tone.fgMuted,
-            onPressed: habilitado ? () => Navigator.of(context).pop() : null,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Las fechas con cupo: pastillas para las más próximas y el calendario para el
-/// resto de la ventana que abrió el showroom.
-class _Fechas extends StatelessWidget {
-  final List<DiaDisponible> dias;
-  final String? fecha;
-  final bool habilitado;
-  final ValueChanged<String> onElegir;
-
-  const _Fechas({
-    required this.dias,
-    required this.fecha,
-    required this.onElegir,
-    this.habilitado = true,
-  });
-
-  Future<void> _abrirCalendario(BuildContext context) async {
-    final disponibles = {for (final d in dias) d.fecha};
-    final primera = fechaDeAgenda(dias.first.fecha);
-    final ultima = fechaDeAgenda(dias.last.fecha);
-    if (primera == null || ultima == null) return;
-
-    final elegida = await showDatePicker(
-      context: context,
-      initialDate: fechaDeAgenda(fecha) ?? primera,
-      firstDate: primera,
-      lastDate: ultima,
-      helpText: 'Elige la fecha de la cita',
-      selectableDayPredicate: (d) => disponibles.contains(isoDeFecha(d)),
-    );
-    if (elegida != null) onElegir(isoDeFecha(elegida));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    // La fecha elegida siempre se ve, aunque venga del calendario y quede fuera
-    // de las primeras: si no, la selección desaparece de la pantalla.
-    final visibles = <DiaDisponible>[
-      ...dias.take(_maxFechasVisibles),
-      if (fecha != null &&
-          !dias.take(_maxFechasVisibles).any((d) => d.fecha == fecha))
-        ...dias.where((d) => d.fecha == fecha),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: t.space.xs,
-          runSpacing: t.space.xs,
-          children: [
-            for (final d in visibles)
-              SChoiceChip(
-                label: etiquetaDiaCorto(d.fecha),
-                selected: d.fecha == fecha,
-                enabled: habilitado,
-                size: SChoiceChipSize.sm,
-                onSelected: (_) => onElegir(d.fecha),
-              ),
-          ],
-        ),
-        if (dias.length > _maxFechasVisibles) ...[
-          SizedBox(height: t.space.xs),
-          SButton(
-            label: 'Ver todas las fechas (${dias.length})',
-            icon: Icons.calendar_month_outlined,
-            variant: SButtonVariant.ghost,
-            size: SButtonSize.sm,
-            fullWidth: false,
-            onPressed: habilitado ? () => _abrirCalendario(context) : null,
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// Los horarios del día elegido, agrupados por agenda: el nombre y el
-/// responsable son lo que distingue dos cupos a la misma hora.
-class _Horarios extends StatelessWidget {
-  final DiaDisponible dia;
-  final int? hora;
-  final int? idConfiguracion;
-  final bool habilitado;
-  final ValueChanged<HorarioDisponible> onElegir;
-
-  const _Horarios({
-    required this.dia,
-    required this.hora,
-    required this.idConfiguracion,
-    required this.onElegir,
-    this.habilitado = true,
-  });
-
-  /// Horarios por configuración, conservando el orden que mandó el servidor.
-  Map<int, List<HorarioDisponible>> get _porAgenda {
-    final salida = <int, List<HorarioDisponible>>{};
-    for (final h in dia.horarios) {
-      salida.putIfAbsent(h.idConfiguracion, () => []).add(h);
-    }
-    return salida;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    final tone = t.color;
-
-    if (dia.horarios.isEmpty) {
-      return const SEmptyState.card(
-        icon: Icons.schedule_outlined,
-        title: 'Sin horarios ese día',
-        message: 'Elige otra fecha.',
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final grupo in _porAgenda.entries)
-          Padding(
-            padding: EdgeInsets.only(bottom: t.space.xs),
-            child: Container(
-              padding: EdgeInsets.all(t.space.sm),
-              decoration: BoxDecoration(
-                color: tone.surfaceAlt,
-                borderRadius: t.radius.mdBorder,
-                border: Border.all(color: tone.borderSoft),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    grupo.value.first.configuracion ?? 'Agenda del showroom',
-                    style: t.text.bodySmall.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: tone.fg,
-                    ),
-                  ),
-                  if (grupo.value.first.responsable case final quien?)
-                    Text(
-                      'Responsable: $quien',
-                      style: t.text.caption.copyWith(color: tone.fgMuted),
-                    ),
-                  SizedBox(height: t.space.xs),
-                  Wrap(
-                    spacing: t.space.xs,
-                    runSpacing: t.space.xs,
-                    children: [
-                      for (final h in grupo.value)
-                        SChoiceChip(
-                          label: h.etiqueta,
-                          selected:
-                              h.hora == hora &&
-                              h.idConfiguracion == idConfiguracion,
-                          enabled: habilitado,
-                          size: SChoiceChipSize.sm,
-                          onSelected: (_) => onElegir(h),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -709,7 +477,7 @@ class _CampoFijo extends StatelessWidget {
       child: Row(
         children: [
           if (icono != null) ...[
-            Icon(icono, size: _iconoChico, color: tone.fgMuted),
+            Icon(icono, size: kIconoEnLinea, color: tone.fgMuted),
             SizedBox(width: t.space.xs),
           ],
           Expanded(
@@ -726,49 +494,6 @@ class _CampoFijo extends StatelessWidget {
     );
   }
 }
-
-/// Bloque teñido de información o de error dentro de la hoja.
-class _Aviso extends StatelessWidget {
-  final IconData icono;
-  final String texto;
-  final bool esError;
-
-  const _Aviso({
-    required this.icono,
-    required this.texto,
-    this.esError = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    final tone = t.color;
-    final acento = esError ? tone.danger : tone.warningFg;
-    return Container(
-      padding: EdgeInsets.all(t.space.sm),
-      decoration: BoxDecoration(
-        color: esError ? tone.dangerSoft : tone.warningSoft,
-        borderRadius: t.radius.mdBorder,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icono, size: _iconoChico, color: acento),
-          SizedBox(width: t.space.xs),
-          Expanded(
-            child: Text(texto, style: t.text.caption.copyWith(color: acento)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Icono dentro de una línea de texto.
-const double _iconoChico = 18;
-
-/// Icono de un control (cerrar).
-const double _iconoMedio = 20;
 
 /// Alto mínimo de un campo, el mismo de `STextField` en tamaño md.
 const double _altoCampo = 44;

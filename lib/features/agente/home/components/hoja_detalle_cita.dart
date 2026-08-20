@@ -14,6 +14,8 @@ import 'package:sozu_agente_app/ui/ui.dart';
 ///
 /// [onReagendar] se dispara con la hoja YA cerrada, porque el reagendado abre su
 /// propia hoja y dos modales apilados dejan al agente sin saber cuál cierra.
+/// [notaReagendar] explica a dónde lleva ese botón cuando no reagenda aquí
+/// mismo.
 ///
 /// Devuelve `true` si la cita quedó cancelada.
 Future<bool?> mostrarDetalleCita(
@@ -22,12 +24,14 @@ Future<bool?> mostrarDetalleCita(
   required String? nombreProspecto,
   required Future<String?> Function() onCancelar,
   VoidCallback? onReagendar,
+  String? notaReagendar,
 }) {
   final cuerpo = _DetalleCita(
     cita: cita,
     nombreProspecto: nombreProspecto,
     onCancelar: onCancelar,
     onReagendar: onReagendar,
+    notaReagendar: notaReagendar,
   );
 
   if (context.bp.hasTwoColumns) {
@@ -60,12 +64,14 @@ class _DetalleCita extends StatefulWidget {
   final String? nombreProspecto;
   final Future<String?> Function() onCancelar;
   final VoidCallback? onReagendar;
+  final String? notaReagendar;
 
   const _DetalleCita({
     required this.cita,
     required this.nombreProspecto,
     required this.onCancelar,
     this.onReagendar,
+    this.notaReagendar,
   });
 
   @override
@@ -262,6 +268,11 @@ class _DetalleCitaState extends State<_DetalleCita> {
                   ],
                 ],
               ),
+            if (widget.notaReagendar case final nota?
+                when widget.onReagendar != null && !_confirmando) ...[
+              SizedBox(height: t.space.xs),
+              Text(nota, style: t.text.caption.copyWith(color: tone.fgSubtle)),
+            ],
           ],
         ],
       ),
