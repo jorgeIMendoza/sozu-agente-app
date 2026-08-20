@@ -5,9 +5,9 @@ import 'package:sozu_agente_app/features/auth/ports/auth_port.dart';
 /// Quién puede entrar al Portal de Agentes.
 ///
 /// Un solo camino: el ROL. Agente Inmobiliario (3, el aliado externo) y Agente
-/// Interno (9, el de SOZU). A diferencia del Portal del Cliente —donde además
+/// Interno (9, el de SOZU). A diferencia del Portal del Cliente (donde además
 /// entra cualquiera con una compra activa, porque el rol dice para qué se
-/// contrató a la persona y no si compró— aquí la única razón para entrar es que
+/// contrató a la persona y no si compró) aquí la única razón para entrar es que
 /// se te contrató para vender. No hay equivalente de `es_comprador`.
 ///
 /// El acceso administrador (impersonación, "ver como agente") es otra cosa y va

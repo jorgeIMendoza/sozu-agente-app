@@ -92,7 +92,7 @@ class PermisosVista {
 }
 
 /// Identidad del agente cuyos datos se están sirviendo. Cuando un admin
-/// impersona, es la del agente impersonado — no la del admin.
+/// impersona, es la del agente impersonado, no la del admin.
 class IdentidadAgente {
   final String email;
   final int? idPersona;

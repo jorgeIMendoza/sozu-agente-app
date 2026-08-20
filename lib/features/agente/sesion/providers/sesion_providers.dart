@@ -14,7 +14,7 @@ final sesionPortProvider = Provider<SesionPort>((ref) {
 
 /// Bootstrap del portal. Todo lo que gatea la UI (tabs, permisos, recortes,
 /// activación) sale de aquí, así que se carga una vez por sesión y se invalida
-/// al cambiar de agente impersonado — de eso se encarga [sesionPortProvider],
+/// al cambiar de agente impersonado: de eso se encarga [sesionPortProvider],
 /// que cambia de identidad y hace que este provider se reconstruya.
 ///
 /// Se mantiene como `FutureProvider` (no un controlador con estado) por la misma
@@ -29,7 +29,7 @@ final sesionProvider = FutureProvider<SesionAgente>((ref) async {
 
 /// Permisos de una vista (`VistaAgente.*`) ya resueltos. Devuelve permisos vacíos
 /// mientras carga: la UI se pinta deshabilitada y luego se habilita, nunca al
-/// revés — habilitar primero deja al usuario tocar un botón que el backend va a
+/// revés: habilitar primero deja al usuario tocar un botón que el backend va a
 /// rechazar.
 final permisosVistaProvider = Provider.family<PermisosVista, String>((
   ref,
