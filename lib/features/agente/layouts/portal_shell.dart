@@ -726,8 +726,11 @@ class _PortalShellTopBar extends ConsumerWidget {
           const SizedBox(width: 16),
           const PortalTopBarSearch(),
           const SizedBox(width: 12),
-          // "Descargar app" solo en web: en la app nativa no aplica.
-          if (kIsWeb) ...[const AppDownloadButton(), const SizedBox(width: 12)],
+          // "Descargar app" NO va aquí: este topbar es el de escritorio, y en
+          // escritorio no hay app que instalar. Vive en el topbar móvil
+          // (`PortalTopBar`, que es el que se pinta fuera del modo portal),
+          // donde `openAppStore` lleva a la tienda del SO del teléfono. Para
+          // instalarla desde escritorio queda el QR del menú del avatar.
           // Botón "Referir" oculto por ahora (a petición). Restaurar:
           // ReferralButton(), SizedBox(width: 12),
           // Modo presentación: vive en el shell y no en cada pantalla, para que

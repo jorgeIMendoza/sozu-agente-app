@@ -138,23 +138,6 @@ Future<void> showAppDownloadDialog(BuildContext context) {
   );
 }
 
-/// Botón "Descargar app" de la topbar: abre [showAppDownloadDialog].
-class AppDownloadButton extends StatelessWidget {
-  const AppDownloadButton({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SButton.secondary(
-      label: 'Descargar app',
-      icon: Icons.qr_code,
-      size: SButtonSize.sm,
-      fullWidth: false,
-      tooltip: 'Descargar la app (QR)',
-      onPressed: () => showAppDownloadDialog(context),
-    );
-  }
-}
-
 /// Franja "Descarga la app" del login en web-móvil. Teñida y sin relleno
 /// sólido a propósito: un segundo botón primario competiría con "Iniciar
 /// sesión". Sin tienda para el sistema actual informa en vez de navegar.
