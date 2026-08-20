@@ -93,6 +93,35 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
   }
 
   @override
+  Future<void> guardarFiscal({
+    required String rfc,
+    required String regimen,
+    required String usoCfdi,
+    required Domicilio domicilio,
+  }) async {
+    await _fn.call(
+      _funcion,
+      body: {
+        'action': 'guardar_fiscal',
+        'rfc': rfc,
+        // El régimen es la clave SAT de 3 dígitos, que es el id del catálogo.
+        'regimen': regimen,
+        'uso_cfdi': usoCfdi,
+        'direccion_fiscal_calle': domicilio.calle,
+        'direccion_fiscal_num_ext': domicilio.numExt,
+        'direccion_fiscal_num_int': domicilio.numInt,
+        'direccion_fiscal_colonia': domicilio.colonia,
+        'direccion_fiscal_codigo_postal': domicilio.codigoPostal,
+        // El país viaja como cadena ('MX'); estado y municipio como enteros.
+        // Mandarlos al revés los deja en null y el paso fiscal no cierra.
+        'direccion_fiscal_id_pais': domicilio.idPais,
+        'direccion_fiscal_id_estado': domicilio.idEstado,
+        'direccion_fiscal_id_municipio': domicilio.idMunicipio,
+      },
+    );
+  }
+
+  @override
   Future<String?> guardarPresentacion(String? frase) async {
     final res = await _fn.call(
       _funcion,
@@ -119,12 +148,11 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
   }
 
   @override
-  Future<EstadoDocumento> subirDocumento({
+  Future<ResultadoDeCarga> subirDocumento({
     required int tipo,
     required String base64,
     required String nombre,
     String? contentType,
-    bool validado = false,
     DatosDeConstancia? datos,
   }) async {
     final actualizaciones = _camposDeConstancia(datos);
@@ -136,12 +164,11 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
         'base64': base64,
         'nombre': nombre,
         if (contentType != null) 'content_type': contentType,
-        // 2 = validado, 1 = pendiente, la misma codificación del back office.
-        'estatus': validado ? 2 : 1,
+        // Sin `estatus`: el servidor ya no lo lee. Lo decide él leyendo el PDF.
         if (actualizaciones.isNotEmpty) 'persona_updates': actualizaciones,
       },
     );
-    return EstadoDocumento.desde(res['estatus']);
+    return ResultadoDeCarga.desde(res);
   }
 
   @override
@@ -201,7 +228,10 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
 
   @override
   Future<FirmaDeCarta> consultarFirmaDeCarta() async {
-    final res = await _fn.call(_funcion, body: {'action': 'firma_carta_estado'});
+    final res = await _fn.call(
+      _funcion,
+      body: {'action': 'firma_carta_estado'},
+    );
     return FirmaDeCarta(
       estado: EstadoFirmaCarta.desde(res['estado']),
       folio: res['mifiel_document_id'] as String?,
@@ -232,6 +262,7 @@ class PerfilAgenteAdapter implements PerfilAgentePort {
     }
 
     poner('rfc', d.rfc);
+    poner('curp', d.curp);
     poner('nombre_legal', d.nombreLegal);
     poner('regimen', d.regimen);
     poner('direccion_fiscal_codigo_postal', d.codigoPostal);

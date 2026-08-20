@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -107,4 +108,20 @@ class HojaDePerfil extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Fuerza mayúsculas mientras se escribe. Lo usan el CURP y el RFC, que se
+/// guardan en mayúsculas: así el agente ve exactamente lo que se va a mandar.
+class MayusculasAlEscribir extends TextInputFormatter {
+  const MayusculasAlEscribir();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue anterior,
+    TextEditingValue nuevo,
+  ) => TextEditingValue(
+    text: nuevo.text.toUpperCase(),
+    selection: nuevo.selection,
+    composing: TextRange.empty,
+  );
 }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_selectores_de_domicilio.dart';
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
@@ -176,15 +177,6 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
   @override
   Widget build(BuildContext context) {
     final t = context.s;
-    // Los municipios llegan solo del estado elegido: el catálogo completo son
-    // miles de filas y no cabe en una respuesta de arranque.
-    final catalogos = ref.watch(catalogosDeDomicilioProvider(_idEstado));
-    final datos = catalogos.valueOrNull;
-
-    final estadosDelPais = (datos?.estados ?? const <OpcionDeCatalogo>[])
-        .where((e) => _idPais == null || e.padre == null || e.padre == _idPais)
-        .toList();
-
     return HojaDePerfil(
       titulo: 'Editar información',
       subtitulo: 'Tus datos personales y tu domicilio particular.',
@@ -250,7 +242,7 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
             textCapitalization: TextCapitalization.characters,
             inputFormatters: [
               LengthLimitingTextInputFormatter(18),
-              _EnMayusculas(),
+              const MayusculasAlEscribir(),
             ],
             helper: '18 caracteres, como aparece en tu constancia de CURP.',
             errorText: _erroresPorCampo['curp'],
@@ -334,65 +326,19 @@ class _HojaDeIdentidadState extends ConsumerState<_HojaDeIdentidad> {
             ],
           ),
           SizedBox(height: t.space.md),
-          if (catalogos.hasError)
-            Text(
-              'No pudimos cargar los catálogos de país, estado y municipio. '
-              'Guarda lo demás y vuelve a intentarlo.',
-              style: t.text.caption.copyWith(color: t.color.warningFg),
-            )
-          else ...[
-            SSelectField<String>(
-              label: 'País',
-              hint: datos == null ? 'Cargando…' : 'Selecciona tu país',
-              value: _idPais,
-              opciones: [
-                for (final p in datos?.paises ?? const <OpcionDeCatalogo>[])
-                  (value: p.valor, label: p.nombre),
-              ],
-              onChanged: _guardando || datos == null
-                  ? null
-                  : (v) => setState(() {
-                      _idPais = v;
-                      // Cambiar de país invalida estado y municipio: dejarlos
-                      // guardaría un municipio de otro país.
-                      _idEstado = null;
-                      _idMunicipio = null;
-                    }),
+          PerfilSelectoresDeDomicilio(
+            valor: (
+              idPais: _idPais,
+              idEstado: _idEstado,
+              idMunicipio: _idMunicipio,
             ),
-            SizedBox(height: t.space.md),
-            SSelectField<int>(
-              label: 'Estado',
-              hint: datos == null ? 'Cargando…' : 'Selecciona tu estado',
-              value: _idEstado,
-              opciones: [
-                for (final e in estadosDelPais)
-                  (value: int.tryParse(e.valor) ?? 0, label: e.nombre),
-              ],
-              onChanged: _guardando || datos == null
-                  ? null
-                  : (v) => setState(() {
-                      _idEstado = v;
-                      _idMunicipio = null;
-                    }),
-            ),
-            SizedBox(height: t.space.md),
-            SSelectField<int>(
-              label: 'Municipio',
-              hint: _idEstado == null
-                  ? 'Elige primero tu estado'
-                  : datos == null
-                  ? 'Cargando…'
-                  : 'Selecciona tu municipio',
-              value: _idMunicipio,
-              opciones: [
-                for (final m in datos?.municipios ?? const <OpcionDeCatalogo>[])
-                  (value: int.tryParse(m.valor) ?? 0, label: m.nombre),
-              ],
-              onChanged: _guardando || _idEstado == null || datos == null
-                  ? null
-                  : (v) => setState(() => _idMunicipio = v),
-            ),
-          ],
+            habilitado: !_guardando,
+            onCambio: (v) => setState(() {
+              _idPais = v.idPais;
+              _idEstado = v.idEstado;
+              _idMunicipio = v.idMunicipio;
+            }),
+          ),
           if (_error != null) ...[
             SizedBox(height: t.space.md),
             Text(
@@ -464,18 +410,4 @@ class _Fecha extends StatelessWidget {
       ],
     );
   }
-}
-
-/// La CURP se guarda en mayúsculas: se fuerza al escribir para que el agente vea
-/// exactamente lo que se va a mandar.
-class _EnMayusculas extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue anterior,
-    TextEditingValue nuevo,
-  ) => TextEditingValue(
-    text: nuevo.text.toUpperCase(),
-    selection: nuevo.selection,
-    composing: TextRange.empty,
-  );
 }

@@ -19,6 +19,15 @@ class FakePerfilAgentePort implements PerfilAgentePort {
   /// Última cuenta bancaria guardada, para verificar qué se mandó.
   Map<String, Object?>? ultimaCuenta;
 
+  /// Últimos datos fiscales guardados con `guardarFiscal`, con los tipos tal
+  /// como se mandan (id de país cadena, ids de estado y municipio enteros).
+  Map<String, Object?>? ultimoFiscal;
+
+  /// Veredicto que devuelve [subirDocumento]; por defecto entra a revisión.
+  ResultadoDeCarga veredictoDeCarga = const ResultadoDeCarga(
+    estado: EstadoDocumento.revision,
+  );
+
   /// Últimos datos de la Constancia mandados al subir el documento fiscal.
   DatosDeConstancia? ultimosDatosFiscales;
 
@@ -80,6 +89,29 @@ class FakePerfilAgentePort implements PerfilAgentePort {
   }
 
   @override
+  Future<void> guardarFiscal({
+    required String rfc,
+    required String regimen,
+    required String usoCfdi,
+    required Domicilio domicilio,
+  }) async {
+    _registrar('guardarFiscal');
+    ultimoFiscal = {
+      'rfc': rfc,
+      'regimen': regimen,
+      'uso_cfdi': usoCfdi,
+      'direccion_fiscal_calle': domicilio.calle,
+      'direccion_fiscal_num_ext': domicilio.numExt,
+      'direccion_fiscal_num_int': domicilio.numInt,
+      'direccion_fiscal_colonia': domicilio.colonia,
+      'direccion_fiscal_codigo_postal': domicilio.codigoPostal,
+      'direccion_fiscal_id_pais': domicilio.idPais,
+      'direccion_fiscal_id_estado': domicilio.idEstado,
+      'direccion_fiscal_id_municipio': domicilio.idMunicipio,
+    };
+  }
+
+  @override
   Future<String?> guardarPresentacion(String? frase) async {
     _registrar('guardarPresentacion');
     return frase;
@@ -100,17 +132,16 @@ class FakePerfilAgentePort implements PerfilAgentePort {
   }
 
   @override
-  Future<EstadoDocumento> subirDocumento({
+  Future<ResultadoDeCarga> subirDocumento({
     required int tipo,
     required String base64,
     required String nombre,
     String? contentType,
-    bool validado = false,
     DatosDeConstancia? datos,
   }) async {
     _registrar('subirDocumento:$tipo');
     ultimosDatosFiscales = datos;
-    return validado ? EstadoDocumento.validado : EstadoDocumento.revision;
+    return veredictoDeCarga;
   }
 
   @override

@@ -6,6 +6,29 @@ import 'package:sozu_agente_app/features/agente/perfil/services/validaciones_del
 /// los que antes pasaban con solo contar 18 caracteres.
 void main() {
   _gateDeLaCarta();
+  group('rfcValido', () {
+    test('acepta el RFC de una persona física (13) y de una moral (12)', () {
+      expect(rfcValido('HEAL850101AB1'), isTrue);
+      expect(rfcValido('SOZ850101AB1'), isTrue);
+    });
+
+    test('normaliza minúsculas y espacios antes de comparar', () {
+      expect(rfcValido('  heal850101ab1 '), isTrue);
+    });
+
+    test('rechaza longitudes fuera de 12 y 13', () {
+      expect(rfcValido('HEAL850101A'), isFalse);
+      expect(rfcValido('HEAL850101AB12'), isFalse);
+    });
+
+    test('rechaza los rellenos genéricos que el SAT usa de comodín', () {
+      // El backend los rechaza con `rfc_invalido`: avisarlo aquí ahorra el viaje.
+      expect(rfcValido('XXXX850101AB1'), isFalse);
+      expect(rfcValido('AAAA850101AB1'), isFalse);
+      expect(rfcValido('HEAL000000AB1'), isFalse);
+    });
+  });
+
   group('curpValido', () {
     test('acepta un CURP con el formato oficial', () {
       expect(curpValido('HEGA850312HDFRNL09'), isTrue);
