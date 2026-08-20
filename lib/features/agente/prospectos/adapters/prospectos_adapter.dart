@@ -45,6 +45,24 @@ class ProspectosAdapter implements ProspectosPort {
         await _accion('detalle', {'id_persona': idPersona}),
       );
 
+  /// El servidor recorta a propósito el correo y el teléfono de la persona
+  /// encontrada; aquí no se reconstruyen ni se guardan.
+  @override
+  Future<CoincidenciasDeProspecto> buscarExistente({
+    String? email,
+    String? telefono,
+    int? excluirIdPersona,
+  }) async {
+    final correo = (email ?? '').trim();
+    final tel = (telefono ?? '').trim();
+    final res = await _accion('buscar_existente', {
+      if (correo.isNotEmpty) 'email': correo,
+      if (tel.isNotEmpty) 'telefono': tel,
+      if (excluirIdPersona != null) 'excluir_id_persona': excluirIdPersona,
+    });
+    return CoincidenciasDeProspecto.fromJson(res);
+  }
+
   @override
   Future<int> crear({
     required DatosProspecto datos,

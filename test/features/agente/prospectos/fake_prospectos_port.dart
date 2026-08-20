@@ -21,6 +21,14 @@ class FakeProspectosPort implements ProspectosPort {
 
   bool viaCarteraDeTransicion = false;
 
+  /// Respuesta cruda de `buscar_existente`. Se arma con las claves del servidor
+  /// para que el test también fije el mapeo del puerto.
+  Map<String, dynamic> respuestaDeDuplicados = const {'coincidencias': []};
+
+  /// Criterios con los que se pidió la búsqueda, en orden.
+  final List<({String? email, String? telefono, int? excluir})>
+  duplicadosBuscados = [];
+
   void _registrar(String metodo) {
     log.add(metodo);
     final f = nextFailure;
@@ -155,6 +163,21 @@ class FakeProspectosPort implements ProspectosPort {
         },
       ],
     });
+  }
+
+  @override
+  Future<CoincidenciasDeProspecto> buscarExistente({
+    String? email,
+    String? telefono,
+    int? excluirIdPersona,
+  }) async {
+    _registrar('buscarExistente');
+    duplicadosBuscados.add((
+      email: email,
+      telefono: telefono,
+      excluir: excluirIdPersona,
+    ));
+    return CoincidenciasDeProspecto.fromJson(respuestaDeDuplicados);
   }
 
   @override
