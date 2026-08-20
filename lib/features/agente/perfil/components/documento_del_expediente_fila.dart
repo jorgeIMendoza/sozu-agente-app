@@ -24,6 +24,9 @@ class DocumentoDelExpedienteFila extends StatelessWidget {
   /// Abre el archivo ya entregado; null si todavía no hay ninguno.
   final VoidCallback? onVer;
 
+  /// Posición del documento en la lista (1, 2, 3...). Null la omite.
+  final int? numero;
+
   const DocumentoDelExpedienteFila({
     super.key,
     required this.documento,
@@ -31,6 +34,7 @@ class DocumentoDelExpedienteFila extends StatelessWidget {
     this.ocupado = false,
     this.bloqueado = false,
     this.onVer,
+    this.numero,
   });
 
   @override
@@ -65,6 +69,10 @@ class DocumentoDelExpedienteFila extends StatelessWidget {
         children: [
           Row(
             children: [
+              if (numero != null) ...[
+                _Numero(valor: numero!),
+                SizedBox(width: t.space.xs),
+              ],
               Container(
                 width: 36,
                 height: 36,
@@ -74,9 +82,7 @@ class DocumentoDelExpedienteFila extends StatelessWidget {
                   borderRadius: t.radius.mdBorder,
                 ),
                 child: Icon(
-                  d.seFirma
-                      ? Icons.draw_outlined
-                      : Icons.description_outlined,
+                  d.seFirma ? Icons.draw_outlined : Icons.description_outlined,
                   size: 17,
                   color: tone.fgMuted,
                 ),
@@ -176,6 +182,35 @@ class DocumentoDelExpedienteFila extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Posición del documento en la lista, a la izquierda de la fila. Le da al
+/// agente cómo referirse a uno ("el 3") cuando pide ayuda.
+class _Numero extends StatelessWidget {
+  final int valor;
+
+  const _Numero({required this.valor});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: t.color.muted,
+        borderRadius: t.radius.smBorder,
+      ),
+      child: Text(
+        '$valor',
+        style: t.text.overline.copyWith(
+          fontWeight: FontWeight.w700,
+          color: t.color.fgMuted,
+        ),
       ),
     );
   }

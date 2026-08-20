@@ -2,18 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_capacitacion_hoja.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_fila_seccion.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvista.dart';
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/features/agente/perfil/providers/perfil_agente_providers.dart';
 import 'package:sozu_agente_app/features/agente/perfil/services/mensajes_del_perfil.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
-/// Capacitación del agente: su avance y sus citas.
-///
-/// Solo consulta. Agendar la cita se hace desde el portal web (y llegará al app
-/// con el módulo de Citas): ofrecer aquí un botón que no agenda nada sería peor
-/// que no ofrecerlo, así que se le dice a quién acudir.
+/// Capacitación del agente: su avance, sus citas y el alta de una cita nueva.
 class PerfilCapacitacionScreen extends ConsumerWidget {
   const PerfilCapacitacionScreen({super.key});
 
@@ -22,8 +21,32 @@ class PerfilCapacitacionScreen extends ConsumerWidget {
     final t = context.s;
     final asyncPerfil = ref.watch(perfilAgenteProvider);
 
+    // Al quedar algo se refresca lo que se movió: el avance de capacitación
+    // (perfil), el porcentaje de activación (sesión) y la agenda de Inicio.
+    Future<void> abrirHoja({bool reportarAsistencia = false}) async {
+      final resultado = await mostrarAgendarCapacitacion(
+        context,
+        reportarAsistencia: reportarAsistencia,
+      );
+      if (resultado == null || !context.mounted) return;
+      ref.invalidate(perfilAgenteProvider);
+      ref.invalidate(sesionProvider);
+      ref.invalidate(resumenInicioProvider);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(resultado.mensaje)));
+    }
+
     return PerfilSubvista(
       titulo: 'Capacitación',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
+      accion: SButton(
+        label: 'Agendar',
+        icon: Icons.event_available_outlined,
+        size: SButtonSize.sm,
+        fullWidth: false,
+        onPressed: abrirHoja,
+      ),
       children: [
         asyncPerfil.when(
           loading: () => const PerfilSubvistaCargando(),
@@ -85,18 +108,35 @@ class PerfilCapacitacionScreen extends ConsumerWidget {
                 const SSectionLabel(text: 'Tus citas'),
                 SizedBox(height: t.space.xs),
                 if (capacitacion.citas.isEmpty)
-                  const SEmptyState.card(
+                  SEmptyState.card(
                     icon: Icons.school_outlined,
                     title: 'Aún no tienes capacitaciones agendadas.',
                     message:
-                        'Tu contacto en SOZU agenda tu capacitación; en cuanto '
-                        'quede, la verás aquí.',
+                        'Elige una fecha y un horario de los que abrió tu '
+                        'capacitador.',
+                    action: SButton(
+                      label: 'Agendar capacitación',
+                      icon: Icons.event_available_outlined,
+                      fullWidth: false,
+                      onPressed: abrirHoja,
+                    ),
                   )
                 else
                   for (final cita in capacitacion.citas) ...[
                     _Cita(cita: cita),
                     SizedBox(height: t.space.xs),
                   ],
+                SizedBox(height: t.space.xs),
+                // El paso también se cierra acudiendo sin cita previa: la
+                // asistencia se reporta y un administrador la confirma.
+                SButton(
+                  label: 'Ya acudí a una capacitación',
+                  icon: Icons.how_to_reg_outlined,
+                  variant: SButtonVariant.ghost,
+                  size: SButtonSize.sm,
+                  fullWidth: false,
+                  onPressed: () => abrirHoja(reportarAsistencia: true),
+                ),
               ],
             );
           },
@@ -131,11 +171,7 @@ class _Cita extends StatelessWidget {
               color: t.color.surfaceAlt,
               borderRadius: t.radius.mdBorder,
             ),
-            child: Icon(
-              Icons.event_outlined,
-              size: 17,
-              color: t.color.fgMuted,
-            ),
+            child: Icon(Icons.event_outlined, size: 17, color: t.color.fgMuted),
           ),
           SizedBox(width: t.space.sm),
           Expanded(

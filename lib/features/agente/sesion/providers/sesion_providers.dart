@@ -14,7 +14,7 @@ final sesionPortProvider = Provider<SesionPort>((ref) {
 
 /// Bootstrap del portal. Todo lo que gatea la UI (tabs, permisos, recortes,
 /// activación) sale de aquí, así que se carga una vez por sesión y se invalida
-/// al cambiar de agente impersonado — de eso se encarga [sesionPortProvider],
+/// al cambiar de agente impersonado: de eso se encarga [sesionPortProvider],
 /// que cambia de identidad y hace que este provider se reconstruya.
 ///
 /// Se mantiene como `FutureProvider` (no un controlador con estado) por la misma
@@ -29,7 +29,7 @@ final sesionProvider = FutureProvider<SesionAgente>((ref) async {
 
 /// Permisos de una vista (`VistaAgente.*`) ya resueltos. Devuelve permisos vacíos
 /// mientras carga: la UI se pinta deshabilitada y luego se habilita, nunca al
-/// revés — habilitar primero deja al usuario tocar un botón que el backend va a
+/// revés: habilitar primero deja al usuario tocar un botón que el backend va a
 /// rechazar.
 final permisosVistaProvider = Provider.family<PermisosVista, String>((
   ref,
@@ -44,44 +44,56 @@ final permisosVistaProvider = Provider.family<PermisosVista, String>((
 
 /// Identidad efectiva del agente (la del impersonado cuando aplica).
 final identidadAgenteProvider = Provider<IdentidadAgente?>((ref) {
-  return ref.watch(sesionProvider).maybeWhen(
-    data: (s) => s.identidad,
-    orElse: () => null,
-  );
+  return ref
+      .watch(sesionProvider)
+      .maybeWhen(data: (s) => s.identidad, orElse: () => null);
 });
 
 /// Estado de activación del agente.
 final onboardingProvider = Provider<Onboarding>((ref) {
-  return ref.watch(sesionProvider).maybeWhen(
-    data: (s) => s.onboarding,
-    orElse: () => const Onboarding(),
-  );
+  return ref
+      .watch(sesionProvider)
+      .maybeWhen(data: (s) => s.onboarding, orElse: () => const Onboarding());
 });
 
 /// Recortes de vista del agente dependiente.
 final restriccionesProvider = Provider<Restricciones>((ref) {
-  return ref.watch(sesionProvider).maybeWhen(
-    data: (s) => s.restricciones,
-    orElse: () => const Restricciones(),
-  );
+  return ref
+      .watch(sesionProvider)
+      .maybeWhen(
+        data: (s) => s.restricciones,
+        orElse: () => const Restricciones(),
+      );
 });
 
-/// Tabs visibles, en el orden fijo del portal web. Se filtran por permiso de
-/// lectura y por los recortes (Comisiones desaparece para el dependiente).
-final tabsVisiblesProvider = Provider<List<String>>((ref) {
-  final sesion = ref.watch(sesionProvider);
-  const orden = [
-    VistaAgente.inicio,
-    VistaAgente.inventario,
-    VistaAgente.pipeline,
-    VistaAgente.prospectos,
-    VistaAgente.comisiones,
-    VistaAgente.perfil,
-  ];
-  return sesion.maybeWhen(
-    // Mientras carga: solo Inicio y Perfil, que ningún rol de agente tiene
-    // restringidos. Pintar los seis y luego quitar dos hace saltar la barra.
-    orElse: () => const [VistaAgente.inicio, VistaAgente.perfil],
-    data: (s) => orden.where(s.vistaVisible).toList(growable: false),
-  );
+/// Catálogo COMPLETO del menú, en el orden que trae la BD (`submenus` del menú
+/// 16) y sin filtrar por permisos. Mientras la sesión carga es el de respaldo.
+///
+/// Es la lista con la que se resuelve el TÍTULO de la sección: hacerlo sobre las
+/// tabs visibles lo dejaría en "Inicio" durante la carga.
+final catalogoTabsProvider = Provider<List<TabAgente>>((ref) {
+  return ref
+      .watch(sesionProvider)
+      .maybeWhen(data: (s) => s.tabs, orElse: () => tabsAgenteRespaldo);
+});
+
+/// Tabs visibles, en el orden y con los nombres de la BD. Se filtran por permiso
+/// de lectura y por los recortes (Comisiones desaparece para el dependiente).
+///
+/// El orden NO se recalcula aquí: `agente-sesion` ya consulta `submenus` con
+/// `order('orden')` y reordenar de nuevo solo abre la puerta a discrepar con la
+/// web.
+final tabsVisiblesProvider = Provider<List<TabAgente>>((ref) {
+  return ref
+      .watch(sesionProvider)
+      .maybeWhen(
+        // Mientras carga: solo Inicio y Perfil, que ningún rol de agente tiene
+        // restringidos. Pintar los seis y luego quitar dos hace saltar la barra.
+        orElse: () => [
+          for (final t in tabsAgenteRespaldo)
+            if (t.ruta == VistaAgente.inicio || t.ruta == VistaAgente.perfil) t,
+        ],
+        data: (s) =>
+            s.tabs.where((t) => s.vistaVisible(t.ruta)).toList(growable: false),
+      );
 });

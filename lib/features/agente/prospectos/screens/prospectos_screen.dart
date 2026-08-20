@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,17 +9,24 @@ import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_
 import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/components/transferir_prospecto_hoja.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/ports/prospectos_port.dart';
-import 'package:sozu_agente_app/features/agente/prospectos/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/prospectos/services/prospectos_reglas.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 
 /// Valor del filtro que significa "sin filtrar". Los ids del catálogo nunca son
 /// 0 (los del catálogo de respaldo son negativos), así que sirve de comodín.
 const int _sinFiltro = 0;
+
+/// Ruta con la que la web registra esta vista en la bitácora.
+const _rutaVistaWeb = '/admin/agent/prospectos';
+
+/// Página con la que la web etiqueta los CTA de esta pantalla.
+const _paginaCta = 'agent_prospectos';
 
 /// Cartera de prospectos del agente: buscador, filtros y una fila por persona
 /// que se abre para ver sus desarrollos, mover el estado del lead, transferirlo
@@ -42,6 +51,34 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
   int? _relacionGuardando;
 
   @override
+  void initState() {
+    super.initState();
+    final telemetria = ref.read(telemetriaPortProvider);
+    unawaited(telemetria.registrarVista(_rutaVistaWeb));
+    unawaited(
+      telemetria.registrarCta(
+        pagina: _paginaCta,
+        elementoId: 'page_view',
+        tipo: 'page',
+      ),
+    );
+  }
+
+  /// Registra el clic de un CTA con los mismos identificadores que la web. No se
+  /// espera: la telemetría se traga sus fallos y nunca retrasa la acción.
+  void _cta(String elementoId, {Map<String, Object?> metadata = const {}}) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: _paginaCta,
+            elementoId: elementoId,
+            metadata: metadata,
+          ),
+    );
+  }
+
+  @override
   void dispose() {
     _busqueda.dispose();
     super.dispose();
@@ -60,6 +97,7 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
       await ref
           .read(prospectosPortProvider)
           .cambiarEstadoLead(idRelacion: d.idRelacion, idEstadoLead: idEstado);
+      _cta('cambio_estatus_lead', metadata: {'er': d.idRelacion});
       ref.invalidate(carteraProspectosProvider);
       _aviso('Estado actualizado');
     } catch (e) {
@@ -82,6 +120,7 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
       desarrollo: d.desarrollo,
     );
     if (ok != true) return;
+    _cta('reasignar_lead', metadata: {'er': d.idRelacion});
     ref.invalidate(carteraProspectosProvider);
     _aviso('Prospecto transferido. Ya no aparece en tu cartera.');
   }
@@ -251,31 +290,22 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
         ],
       ),
       SizedBox(height: t.space.sm),
-      Wrap(
-        spacing: t.space.xs,
-        runSpacing: t.space.xs,
-        children: [
-          SButton(
-            label: modo.activo ? 'Mostrar datos' : 'Modo presentación',
-            icon: modo.activo
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
-            variant: SButtonVariant.ghost,
+      // El interruptor del modo presentación lo pinta el shell en todas las
+      // pantallas: aquí saldría dos veces.
+      if (permisos.crear)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SButton(
+            label: 'Nuevo prospecto',
+            icon: Icons.person_add_alt,
             size: SButtonSize.sm,
             fullWidth: false,
-            tooltip: 'Oculta nombres, contactos y montos de tus prospectos',
-            onPressed: modo.alternar,
+            onPressed: () {
+              _cta('btn_nuevo_prospecto');
+              _nuevo();
+            },
           ),
-          if (permisos.crear)
-            SButton(
-              label: 'Nuevo prospecto',
-              icon: Icons.person_add_alt,
-              size: SButtonSize.sm,
-              fullWidth: false,
-              onPressed: _nuevo,
-            ),
-        ],
-      ),
+        ),
       SizedBox(height: t.space.sm),
 
       // Con datos ya en mano se sigue pintando la lista aunque haya un refresco
@@ -302,7 +332,7 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
           SEmptyState.card(
             icon: Icons.person_search_outlined,
             title: hayFiltros
-                ? 'No hay prospectos con esos filtros'
+                ? 'No se encontraron prospectos'
                 : 'Aún no tienes prospectos',
             message: hayFiltros
                 ? 'Prueba con otro nombre, estado o desarrollo.'
@@ -325,36 +355,30 @@ class _ProspectosScreenState extends ConsumerState<ProspectosScreen> {
                 prospecto: p,
                 estados: estados,
                 expandido: _abiertos.contains(p.idPersona),
-                puedeActualizar: permisos.actualizar,
                 relacionGuardando: _relacionGuardando,
-                oculta: modo.oculta,
+                enmascarar: modo.enmascarar,
                 onAlternar: () => setState(() {
                   if (!_abiertos.remove(p.idPersona)) {
                     _abiertos.add(p.idPersona);
                   }
                 }),
-                onVerFicha: () => context.push('/prospectos/${p.idPersona}'),
+                onVerFicha: () {
+                  _cta(
+                    'btn_ver_prospecto',
+                    metadata: {'persona_id': p.idPersona},
+                  );
+                  context.push('/prospectos/${p.idPersona}');
+                },
                 onCambiarEstado: _cambiarEstado,
                 onTransferir: (d) => _transferir(p, d),
               ),
             ),
-        if (cartera.valueOrNull?.modeloDeTransicion == true &&
-            filtrados.isNotEmpty) ...[
-          SizedBox(height: t.space.xs),
-          Row(
-            children: [
-              Icon(Icons.people_outline, size: 14, color: tone.fgSubtle),
-              SizedBox(width: t.space.xxs),
-              Expanded(
-                child: Text(
-                  'Leyendo del modelo de transición (dueño por agente + '
-                  'atribución del CRM).',
-                  style: t.text.caption.copyWith(color: tone.fgSubtle),
-                ),
-              ),
-            ],
-          ),
-        ],
+        // Aquí vivía el pie "Leyendo del modelo de transición". Se quitó porque
+        // era una constante disfrazada de aviso: `modeloDeTransicion` sale de
+        // `via_rpc == false`, y la app nunca manda `usar_rpc`, así que el
+        // servidor siempre responde por la vía directa y el pie salía en TODA
+        // cartera no vacía. En la web aparece rara vez, y su texto ("dueño por
+        // agente + atribución del CRM") no le dice nada al agente.
       ],
     ];
   }

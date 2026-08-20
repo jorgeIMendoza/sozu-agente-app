@@ -9,7 +9,7 @@ import 'package:sozu_agente_app/ui/ui.dart';
 /// tiene forma de adivinar a quién pedirle el cambio.
 class PerfilAvisoSoloLectura extends StatelessWidget {
   /// Por qué no se puede editar ("La administra Grupo X"). Puede haber varias en
-  /// la misma pantalla —la constancia fiscal y la carta, por ejemplo— y entonces
+  /// la misma pantalla (la constancia fiscal y la carta, por ejemplo) y entonces
   /// van TODAS en este aviso: repetir la caja con el mismo encabezado y solo el
   /// pie distinto se lee como un error de la app, no como dos motivos.
   final List<String> notas;

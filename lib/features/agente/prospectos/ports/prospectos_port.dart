@@ -327,9 +327,14 @@ class ActividadProspecto {
   final DateTime? fecha;
   final String titulo;
 
-  /// Texto plano del movimiento. En una nota es su contenido sin formato: se
-  /// muestra tal cual porque el app no pinta HTML (ver [AdjuntoNota]).
+  /// Texto plano del movimiento. En una nota es su contenido sin formato; se usa
+  /// como respaldo cuando [html] viene vacío.
   final String detalle;
+
+  /// Contenido con formato de la nota, con las URLs de sus archivos ya firmadas.
+  /// Vacío en citas y ofertas. Es lo que se conserva al editar: reescribir la
+  /// nota desde [detalle] pierde el formato escrito en el portal web.
+  final String html;
 
   final String? autor;
 
@@ -343,6 +348,7 @@ class ActividadProspecto {
     required this.titulo,
     this.fecha,
     this.detalle = '',
+    this.html = '',
     this.autor,
     this.idNota,
     this.adjuntos = const [],
@@ -358,6 +364,7 @@ class ActividadProspecto {
         titulo: (j['titulo'] ?? '') as String,
         fecha: DateTime.tryParse('${j['fecha'] ?? ''}'),
         detalle: (j['detalle'] ?? '') as String,
+        html: (j['html'] ?? '') as String,
         autor: j['autor'] as String?,
         idNota: intDe(j['id_nota']),
         adjuntos: listaDe(
@@ -367,6 +374,11 @@ class ActividadProspecto {
 
   /// Solo las notas propias se pueden editar o borrar.
   bool get esNotaPropia => tipo == TipoActividad.nota && idNota != null;
+
+  /// La nota no cabe recortada en la línea de tiempo y merece "Ver detalle".
+  /// Mismo criterio que el portal web: 140 caracteres o una imagen dentro.
+  bool get notaLarga =>
+      detalle.length > 140 || html.toLowerCase().contains('<img');
 }
 
 /// Ficha completa de un prospecto.
@@ -456,6 +468,131 @@ class DatosProspecto {
   });
 }
 
+/// Por qué un registro salió como posible duplicado.
+enum MotivoCoincidencia {
+  correo,
+  telefono,
+  correoYTelefono;
+
+  /// Clave del servidor a motivo. Una clave desconocida cae en [telefono], que
+  /// es la rama por defecto del propio servidor.
+  static MotivoCoincidencia deClave(Object? clave) => switch (clave) {
+    'correo' => correo,
+    'correo_y_telefono' => correoYTelefono,
+    _ => telefono,
+  };
+}
+
+/// Lead de una coincidencia: en qué desarrollo está registrada la persona, de
+/// quién es y en qué estado va.
+class LeadCoincidencia {
+  final int? idDesarrollo;
+  final String desarrollo;
+
+  /// Nombre del agente dueño del lead; null cuando el servidor no lo resuelve.
+  /// Es lo ÚNICO que se sabe de un dueño ajeno: su correo y su id no viajan.
+  final String? dueno;
+
+  /// El lead es del agente que está capturando.
+  final bool esMio;
+
+  /// Estado del LEAD, no del agente; null cuando no hay atribución.
+  final String? estado;
+
+  const LeadCoincidencia({
+    required this.desarrollo,
+    this.idDesarrollo,
+    this.dueno,
+    this.esMio = false,
+    this.estado,
+  });
+
+  factory LeadCoincidencia.fromJson(Map<String, dynamic> j) => LeadCoincidencia(
+    idDesarrollo: intDe(j['id_proyecto']),
+    desarrollo: (j['proyecto'] ?? 'Sin desarrollo') as String,
+    dueno: j['dueno'] as String?,
+    esMio: j['es_mio'] == true,
+    estado: j['estatus'] as String?,
+  );
+}
+
+/// Persona que ya existe y podría ser el prospecto que se está dando de alta.
+///
+/// Del prospecto encontrado NO viajan su correo ni su teléfono: el servidor los
+/// usa para calcular [motivo] y los recorta, porque una coincidencia por
+/// teléfono no da derecho a ver los datos del prospecto de otro agente.
+class ProspectoCoincidencia {
+  final int idPersona;
+  final String nombre;
+  final MotivoCoincidencia motivo;
+
+  /// Ya compró: es cliente de SOZU, no un prospecto libre.
+  final bool esCliente;
+
+  /// Ids de desarrollo donde la persona ya está registrada.
+  final List<int> desarrollosRegistrados;
+
+  final List<LeadCoincidencia> leads;
+
+  /// Existe pero sin ningún lead. NO prueba que nadie la trabaje: lo más
+  /// probable es que sea de otro asesor y el servidor no pudo resolverlo.
+  final bool sinLeads;
+
+  const ProspectoCoincidencia({
+    required this.idPersona,
+    required this.nombre,
+    required this.motivo,
+    this.esCliente = false,
+    this.desarrollosRegistrados = const [],
+    this.leads = const [],
+    this.sinLeads = false,
+  });
+
+  factory ProspectoCoincidencia.fromJson(Map<String, dynamic> j) =>
+      ProspectoCoincidencia(
+        idPersona: intDe(j['id_persona']) ?? 0,
+        nombre: (j['nombre'] ?? 'Sin nombre') as String,
+        motivo: MotivoCoincidencia.deClave(j['motivo']),
+        esCliente: j['es_cliente'] == true,
+        desarrollosRegistrados: _ids(j['proyectos_registrados']),
+        leads: listaDe(
+          j['leads'],
+        ).map(LeadCoincidencia.fromJson).toList(growable: false),
+        sinLeads: j['sin_leads'] == true,
+      );
+
+  static List<int> _ids(Object? valor) => valor is! List
+      ? const []
+      : valor.map(intDe).whereType<int>().toList(growable: false);
+}
+
+/// Resultado de la búsqueda de duplicados.
+///
+/// [noDisponible] avisa que la verificación falló del lado del servidor. NO
+/// bloquea el alta: solo deja de prometer que el prospecto es nuevo.
+class CoincidenciasDeProspecto {
+  final List<ProspectoCoincidencia> coincidencias;
+  final bool noDisponible;
+
+  const CoincidenciasDeProspecto({
+    this.coincidencias = const [],
+    this.noDisponible = false,
+  });
+
+  /// Sin criterio de búsqueda: nada encontrado y nada que avisar.
+  static const vacio = CoincidenciasDeProspecto();
+
+  factory CoincidenciasDeProspecto.fromJson(Map<String, dynamic> j) =>
+      CoincidenciasDeProspecto(
+        coincidencias: listaDe(
+          j['coincidencias'],
+        ).map(ProspectoCoincidencia.fromJson).toList(growable: false),
+        noDisponible: j['aviso_no_disponible'] == true,
+      );
+
+  bool get hayCoincidencias => coincidencias.isNotEmpty;
+}
+
 /// Archivo que se está pegando a una nota nueva.
 class AdjuntoNuevo {
   final String nombre;
@@ -489,6 +626,18 @@ abstract interface class ProspectosPort {
 
   /// Ficha del prospecto: persona, desarrollos, ofertas digitales y actividad.
   Future<DetalleProspecto> detalle(int idPersona);
+
+  /// Personas que ya existen con ese correo o ese teléfono, para no dar de alta
+  /// dos veces a la misma. [excluirIdPersona] deja fuera a la que se edita.
+  ///
+  /// Sin correo con formato válido y sin teléfono de 10 dígitos devuelve vacío
+  /// sin consultar. Nunca falla: si la verificación no está disponible lo dice
+  /// en `noDisponible` y el alta sigue permitida.
+  Future<CoincidenciasDeProspecto> buscarExistente({
+    String? email,
+    String? telefono,
+    int? excluirIdPersona,
+  });
 
   /// Da de alta el prospecto y lo liga a [desarrollos]. Devuelve su id de
   /// persona. Una persona que ya existe (mismo correo) se reusa, no se duplica.
@@ -535,11 +684,16 @@ abstract interface class ProspectosPort {
   });
 
   /// Reemplaza el contenido de una nota propia. [adjuntos] son los archivos que
-  /// la nota ya traía y que deben conservarse: el contenido se reescribe
-  /// completo, así que omitirlos los desprende de la nota.
+  /// deben quedar pegados: el contenido se reescribe completo, así que omitir uno
+  /// lo desprende de la nota.
+  ///
+  /// [cuerpoConFormato] es el contenido original de la nota SIN sus archivos;
+  /// mandarlo conserva negritas, listas y colores escritos en el portal web. Con
+  /// null el cuerpo se reescribe desde [texto] y el formato se pierde.
   Future<void> editarNota({
     required int idNota,
     required String texto,
+    String? cuerpoConFormato,
     List<AdjuntoNota> adjuntos = const [],
   });
 

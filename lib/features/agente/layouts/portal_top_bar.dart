@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:sozu_agente_app/core/portal_theme.dart';
 import 'package:sozu_agente_app/features/app_download/components/app_download.dart';
+import 'package:sozu_agente_app/features/agente/home/components/modo_presentacion_boton.dart';
 import 'package:sozu_agente_app/features/agente/home/components/notification_bell.dart';
 // Botón "Referir" oculto por ahora (a petición); restaurar junto con su uso.
 // import 'package:sozu_agente_app/features/agente/perfil/perfil_screen.dart';
@@ -36,6 +37,10 @@ class PortalTopBar extends StatelessWidget implements PreferredSizeWidget {
             icon: const Icon(Icons.download_outlined),
             onPressed: () => openAppStore(context),
           ),
+        // Modo presentación en TODAS las secciones, como la píldora del header
+        // web: si vive dentro de cada pantalla, en las que no lo montan (p. ej.
+        // Inventario) el agente se queda sin interruptor.
+        const ModoPresentacionBoton(),
         const NotificationBell(),
       ],
     );

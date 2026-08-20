@@ -47,17 +47,7 @@ class UbicacionLugar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            color: tone.surfaceAlt,
-            padding: EdgeInsets.symmetric(
-              horizontal: t.space.sm,
-              vertical: t.space.xs,
-            ),
-            child: Text(
-              titulo.toUpperCase(),
-              style: t.text.overline.copyWith(color: tone.fgMuted),
-            ),
-          ),
+          _EncabezadoCelda(titulo: titulo),
           AspectRatio(
             aspectRatio: _aspectoMapa,
             child: punto == null
@@ -132,6 +122,58 @@ class UbicacionLugar extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Encabezado de una celda de la sección Ubicación ("EL DESARROLLO",
+/// "SHOWROOM DE VENTAS", "PUNTOS DE INTERÉS").
+class _EncabezadoCelda extends StatelessWidget {
+  final String titulo;
+
+  const _EncabezadoCelda({required this.titulo});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return Container(
+      color: t.color.surfaceAlt,
+      padding: EdgeInsets.symmetric(
+        horizontal: t.space.sm,
+        vertical: t.space.xs,
+      ),
+      child: Text(
+        titulo.toUpperCase(),
+        style: t.text.overline.copyWith(color: t.color.fgMuted),
+      ),
+    );
+  }
+}
+
+/// Puntos de interés como celda de la sección Ubicación, al lado del mapa del
+/// desarrollo. Se usa cuando el desarrollo NO tiene showroom: ese hueco es el
+/// del showroom, y dejarlo vacío parte la sección en dos.
+class PuntosInteresCard extends StatelessWidget {
+  final List<PuntoInteres> puntos;
+
+  const PuntosInteresCard({super.key, required this.puntos});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.s;
+    return SCard.outlined(
+      padding: EdgeInsets.zero,
+      clip: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _EncabezadoCelda(titulo: 'Puntos de interés'),
+          Padding(
+            padding: EdgeInsets.fromLTRB(t.space.sm, t.space.sm, t.space.sm, 0),
+            child: PuntosInteresLista(puntos: puntos),
           ),
         ],
       ),

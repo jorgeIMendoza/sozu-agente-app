@@ -39,7 +39,11 @@ class TarjetaBloqueo extends StatelessWidget {
                   color: tone.warningSoft,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.lock_outline, size: 20, color: tone.warningFg),
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 20,
+                  color: tone.warningFg,
+                ),
               ),
               SizedBox(width: t.space.sm),
               Expanded(
@@ -54,7 +58,7 @@ class TarjetaBloqueo extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Termina tu perfil para ver y recibir tus comisiones.',
+                      'Completa tu perfil para ver y recibir comisiones.',
                       style: t.text.caption.copyWith(color: tone.fgMuted),
                     ),
                   ],

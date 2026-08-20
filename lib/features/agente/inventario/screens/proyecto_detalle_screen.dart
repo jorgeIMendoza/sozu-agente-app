@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,16 +8,23 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:sozu_agente_app/core/format.dart';
 import 'package:sozu_agente_app/core/open_media.dart';
 import 'package:sozu_agente_app/core/portal_theme.dart';
+import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
+import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
+import 'package:sozu_agente_app/features/agente/inventario/components/amenidades_grid.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/avance_obra_card.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/compartir_desarrollo.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/galeria_imagenes.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/inventario_seccion.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/modelo_card.dart';
+import 'package:sozu_agente_app/features/agente/inventario/components/rejilla_inventario.dart';
 import 'package:sozu_agente_app/features/agente/inventario/components/ubicacion_card.dart';
 import 'package:sozu_agente_app/features/agente/inventario/ports/inventario_port.dart';
 import 'package:sozu_agente_app/features/agente/inventario/providers/inventario_providers.dart';
 import 'package:sozu_agente_app/features/agente/inventario/screens/como_llegar_screen.dart';
 import 'package:sozu_agente_app/features/agente/inventario/services/mensajes_error.dart';
+import 'package:sozu_agente_app/features/agente/inventario/services/telemetria_inventario.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 import 'package:sozu_agente_app/widgets/network_image.dart';
@@ -24,10 +33,37 @@ import 'package:sozu_agente_app/widgets/network_image.dart';
 /// amenidades, avance de obra, ubicación y material comercial. Es lo que el
 /// agente le muestra al cliente, así que todo lo que se pinta viene del
 /// servidor: aquí no se calcula ningún dato comercial.
-class ProyectoDetalleScreen extends ConsumerWidget {
+class ProyectoDetalleScreen extends ConsumerStatefulWidget {
   final int idProyecto;
 
   const ProyectoDetalleScreen({super.key, required this.idProyecto});
+
+  @override
+  ConsumerState<ProyectoDetalleScreen> createState() =>
+      _ProyectoDetalleScreenState();
+}
+
+class _ProyectoDetalleScreenState extends ConsumerState<ProyectoDetalleScreen> {
+  @override
+  void initState() {
+    super.initState();
+    final idProyecto = widget.idProyecto;
+    final t = ref.read(telemetriaPortProvider);
+    unawaited(
+      t.registrarVista(
+        TelemetriaInventario.rutaFicha(idProyecto),
+        datos: {'proyecto_id': idProyecto},
+      ),
+    );
+    unawaited(
+      t.registrarCta(
+        pagina: TelemetriaInventario.paginaFicha,
+        elementoId: TelemetriaInventario.vistaPantalla,
+        tipo: TelemetriaInventario.tipoPagina,
+        metadata: {'proyecto_id': idProyecto},
+      ),
+    );
+  }
 
   void _volver(BuildContext context) {
     if (context.canPop()) {
@@ -38,7 +74,8 @@ class ProyectoDetalleScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final idProyecto = widget.idProyecto;
     final ficha = ref.watch(fichaDesarrolloProvider(idProyecto));
     final portal = isPortalMode(context);
 
@@ -101,6 +138,49 @@ class _Ficha extends ConsumerWidget {
 
   const _Ficha({required this.ficha, required this.portal});
 
+  /// CTA de la ficha. `metadata` va sin PII: ids y el canal elegido.
+  void _cta(
+    WidgetRef ref,
+    String elementoId, {
+    String? etiqueta,
+    Map<String, Object?> metadata = const {},
+  }) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: TelemetriaInventario.paginaFicha,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+            metadata: metadata,
+          ),
+    );
+  }
+
+  /// Abre un documento comercial: cuenta el CTA y la exportación, igual que la
+  /// web (el tablero de descargas se alimenta de la segunda).
+  void _abrirDocumento(
+    BuildContext context,
+    WidgetRef ref, {
+    required String elementoId,
+    required String etiqueta,
+    required String tipoExportacion,
+    required String? url,
+    required String titulo,
+  }) {
+    final idProyecto = ficha.desarrollo.id;
+    _cta(ref, elementoId, etiqueta: etiqueta);
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarExportacion(
+            tipoExportacion,
+            datos: {'proyecto_id': idProyecto},
+          ),
+    );
+    unawaited(openMedia(context, url, titulo: titulo));
+  }
+
   /// Abre una liga externa (video de obra) y avisa si no se pudo.
   Future<void> _abrirExterno(BuildContext context, String url) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -114,6 +194,23 @@ class _Ficha extends ConsumerWidget {
         const SnackBar(content: Text('No pudimos abrir el video.')),
       );
     }
+  }
+
+  /// Abre el agendado con el desarrollo ya resuelto y avisa cómo quedó.
+  Future<void> _agendarCita(
+    BuildContext context,
+    WidgetRef ref,
+    DesarrolloParaCita desarrollo,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final cita = await mostrarAgendarCita(context, desarrollo: desarrollo);
+    if (cita == null) return;
+    // La agenda de Inicio no es autoDispose y solo se invalidaba desde Inicio:
+    // sin esto, la cita recién creada no aparecía ahí hasta recargar.
+    ref.invalidate(resumenInicioProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text(cita.aviso ?? 'Cita agendada.')),
+    );
   }
 
   void _comoLlegar(
@@ -145,6 +242,10 @@ class _Ficha extends ConsumerWidget {
     // Dos columnas donde caben (tablet y escritorio): los carruseles laterales
     // del portal web se resuelven aquí con rejilla, no con scroll horizontal.
     final columnas = context.responsive(mobile: 1, tablet: 2, desktop: 3);
+    // Los puntos de interés ocupan el hueco del showroom cuando no hay uno;
+    // sacarlos a sección propia deja la mitad de Ubicación en blanco.
+    final puntosAlLado =
+        ficha.showroom == null && ficha.puntosInteres.isNotEmpty;
 
     return ContentFrame(
       maxWidth: _anchoFicha,
@@ -163,16 +264,37 @@ class _Ficha extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                CarruselImagenes(
-                  imagenes: galeria,
-                  aspecto: _aspectoPortada,
-                  conFlechas: true,
-                  onTocar: (i) => mostrarVisorImagenes(
-                    context,
-                    galeria,
-                    indice: i,
-                    titulo: d.nombre,
-                  ),
+                Stack(
+                  children: [
+                    CarruselImagenes(
+                      imagenes: galeria,
+                      aspecto: _aspectoPortada,
+                      conFlechas: true,
+                      onTocar: (i) => mostrarVisorImagenes(
+                        context,
+                        galeria,
+                        indice: i,
+                        titulo: d.nombre,
+                      ),
+                    ),
+                    // El avance es lo primero que pregunta el cliente frente a
+                    // la portada; en la web va encima de ella por eso mismo.
+                    if (ficha.avance.porcentaje > 0)
+                      Positioned(
+                        left: t.space.sm,
+                        bottom: t.space.sm,
+                        child: SBadge(
+                          label: ficha.avance.porcentaje >= 100
+                              ? 'Finalizado'
+                              : '${ficha.avance.porcentaje}% avance de obra',
+                          tone: ficha.avance.porcentaje >= 100
+                              ? SBadgeTone.positive
+                              : SBadgeTone.pending,
+                          icon: Icons.engineering_outlined,
+                          size: SBadgeSize.sm,
+                        ),
+                      ),
+                  ],
                 ),
                 Padding(
                   padding: EdgeInsets.all(t.space.md),
@@ -251,9 +373,15 @@ class _Ficha extends ConsumerWidget {
                   label: 'Ver inventario',
                   icon: Icons.apartment_outlined,
                   isNavigation: true,
-                  onPressed: () => context.push(
-                    '/inventario/unidades?proyecto=${d.id}',
-                  ),
+                  onPressed: () {
+                    _cta(
+                      ref,
+                      TelemetriaInventario.btnVerInventario,
+                      etiqueta: 'Ver inventario',
+                      metadata: {'proyecto_id': d.id},
+                    );
+                    context.push('/inventario/unidades?proyecto=${d.id}');
+                  },
                 ),
                 SizedBox(height: t.space.xs),
                 Row(
@@ -262,17 +390,23 @@ class _Ficha extends ConsumerWidget {
                       child: SButton.secondary(
                         label: 'Agendar cita',
                         icon: Icons.event_available_outlined,
-                        // La agenda del showroom es del módulo de Citas, que
-                        // llega en otra tanda: el punto de entrada se queda aquí
-                        // para no rehacer la fila de acciones después. Cuando
-                        // exista, esto navega a su pantalla.
-                        onPressed: () => ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(
-                          const SnackBar(
-                            content: Text('Disponible en la siguiente tanda'),
-                          ),
-                        ),
+                        // El desarrollo ya se sabe; el prospecto lo elige el
+                        // agente en la hoja.
+                        onPressed: () {
+                          _cta(
+                            ref,
+                            TelemetriaInventario.btnAgendarCita,
+                            etiqueta: 'Agendar cita',
+                            metadata: {'proyecto_id': d.id},
+                          );
+                          unawaited(
+                            _agendarCita(
+                              context,
+                              ref,
+                              DesarrolloParaCita(id: d.id, nombre: d.nombre),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     SizedBox(width: t.space.xs),
@@ -280,12 +414,30 @@ class _Ficha extends ConsumerWidget {
                       child: SButton.secondary(
                         label: 'Compartir',
                         icon: Icons.share_outlined,
-                        onPressed: () => mostrarCompartirDesarrollo(
-                          context,
-                          nombre: d.nombre,
-                          urlPublica: d.urlPublica,
-                          ubicacion: d.direccion,
-                        ),
+                        onPressed: () {
+                          _cta(
+                            ref,
+                            TelemetriaInventario.btnCompartir,
+                            etiqueta: 'Compartir proyecto',
+                          );
+                          unawaited(
+                            mostrarCompartirDesarrollo(
+                              context,
+                              nombre: d.nombre,
+                              urlPublica: d.urlPublica,
+                              ubicacion: d.direccion,
+                              onPlataforma: (plataforma) => _cta(
+                                ref,
+                                TelemetriaInventario.btnCompartirPlataforma,
+                                etiqueta: 'Compartir $plataforma',
+                                metadata: {
+                                  'plataforma': plataforma,
+                                  'proyecto_id': d.id,
+                                },
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -392,10 +544,18 @@ class _Ficha extends ConsumerWidget {
                             ),
                       onVerUnidades: m.disponibles == 0
                           ? null
-                          : () => context.push(
-                              '/inventario/unidades'
-                              '?proyecto=${d.id}&modelo=${m.id}',
-                            ),
+                          : () {
+                              _cta(
+                                ref,
+                                TelemetriaInventario.btnVerInventarioModelo,
+                                etiqueta: 'Ver inventario',
+                                metadata: {'modelo_id': m.id},
+                              );
+                              context.push(
+                                '/inventario/unidades'
+                                '?proyecto=${d.id}&modelo=${m.id}',
+                              );
+                            },
                     ),
                 ],
               ),
@@ -408,11 +568,9 @@ class _Ficha extends ConsumerWidget {
             InventarioSeccion(
               icon: Icons.auto_awesome_outlined,
               titulo: 'Amenidades',
-              child: _Rejilla(
+              child: AmenidadesGrid(
+                amenidades: ficha.amenidades,
                 columnas: columnas + 1,
-                children: [
-                  for (final a in ficha.amenidades) _AmenidadTile(amenidad: a),
-                ],
               ),
             ),
           ],
@@ -439,12 +597,13 @@ class _Ficha extends ConsumerWidget {
           // ── Ubicación ──
           if (d.tieneCoordenadas ||
               (d.direccion ?? '').isNotEmpty ||
-              ficha.showroom != null) ...[
+              ficha.showroom != null ||
+              puntosAlLado) ...[
             SizedBox(height: t.space.lg),
             InventarioSeccion(
               icon: Icons.map_outlined,
               titulo: 'Ubicación',
-              child: _Rejilla(
+              child: RejillaInventario(
                 columnas: context.responsive(mobile: 1, tablet: 2),
                 children: [
                   UbicacionLugar(
@@ -476,17 +635,22 @@ class _Ficha extends ConsumerWidget {
                               lat: ficha.showroom!.latitud!,
                               lng: ficha.showroom!.longitud!,
                               nombre:
-                                  ficha.showroom!.nombre ?? 'Showroom de ventas',
+                                  ficha.showroom!.nombre ??
+                                  'Showroom de ventas',
                               direccion: ficha.showroom!.direccion,
                             ),
                     ),
+                  if (puntosAlLado)
+                    PuntosInteresCard(puntos: ficha.puntosInteres),
                 ],
               ),
             ),
           ],
 
           // ── Puntos de interés ──
-          if (ficha.puntosInteres.isNotEmpty) ...[
+          // Solo como sección aparte: si no hay showroom, ya se pintaron al
+          // lado del mapa del desarrollo.
+          if (!puntosAlLado && ficha.puntosInteres.isNotEmpty) ...[
             SizedBox(height: t.space.lg),
             InventarioSeccion(
               icon: Icons.explore_outlined,
@@ -508,9 +672,13 @@ class _Ficha extends ConsumerWidget {
                     _FilaDocumento(
                       titulo: 'Brochure',
                       detalle: 'PDF · Presentación',
-                      onAbrir: () => openMedia(
+                      onAbrir: () => _abrirDocumento(
                         context,
-                        ficha.material.brochure!.url,
+                        ref,
+                        elementoId: TelemetriaInventario.btnDescargarBrochure,
+                        etiqueta: 'Brochure',
+                        tipoExportacion: TelemetriaInventario.exportBrochure,
+                        url: ficha.material.brochure!.url,
                         titulo: 'Brochure ${d.nombre}',
                       ),
                     ),
@@ -519,9 +687,14 @@ class _Ficha extends ConsumerWidget {
                     _FilaDocumento(
                       titulo: 'Ficha técnica',
                       detalle: 'PDF · Especificaciones',
-                      onAbrir: () => openMedia(
+                      onAbrir: () => _abrirDocumento(
                         context,
-                        ficha.material.fichaTecnica!.url,
+                        ref,
+                        elementoId: TelemetriaInventario.btnDescargarFicha,
+                        etiqueta: 'Ficha técnica',
+                        tipoExportacion:
+                            TelemetriaInventario.exportFichaTecnica,
+                        url: ficha.material.fichaTecnica!.url,
                         titulo: 'Ficha técnica ${d.nombre}',
                       ),
                     ),
@@ -550,7 +723,9 @@ class _TiraORejilla extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (columnas > 1) return _Rejilla(columnas: columnas, children: children);
+    if (columnas > 1) {
+      return RejillaInventario(columnas: columnas, children: children);
+    }
     final gap = context.s.space.xs;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -563,42 +738,6 @@ class _TiraORejilla extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-/// Rejilla de ancho fijo por columna.
-class _Rejilla extends StatelessWidget {
-  final int columnas;
-  final List<Widget> children;
-
-  const _Rejilla({required this.columnas, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = context.s.space.xs;
-    if (columnas <= 1) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) SizedBox(height: gap),
-            children[i],
-          ],
-        ],
-      );
-    }
-    return LayoutBuilder(
-      builder: (context, c) {
-        final ancho = (c.maxWidth - gap * (columnas - 1)) / columnas;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final w in children) SizedBox(width: ancho, child: w),
-          ],
-        );
-      },
     );
   }
 }
@@ -624,7 +763,7 @@ class _MiniaturaVista extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 4 / 3,
-              child: SozuNetworkImage(url:vista.url),
+              child: SozuNetworkImage(url: vista.url),
             ),
             if (vista.nombre != null)
               Positioned(
@@ -650,68 +789,6 @@ class _MiniaturaVista extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Amenidad: foto con su nombre encima, o solo el nombre si no tiene foto.
-class _AmenidadTile extends StatelessWidget {
-  final Amenidad amenidad;
-
-  const _AmenidadTile({required this.amenidad});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.s;
-    final tone = t.color;
-    if (amenidad.foto == null) {
-      return SCard.outlined(
-        child: Center(
-          child: Text(
-            amenidad.nombre,
-            textAlign: TextAlign.center,
-            style: t.text.bodySmall.copyWith(
-              fontWeight: FontWeight.w600,
-              color: tone.fg,
-            ),
-          ),
-        ),
-      );
-    }
-    return SCard.outlined(
-      padding: EdgeInsets.zero,
-      clip: true,
-      child: Stack(
-        children: [
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: SozuNetworkImage(url:amenidad.foto!),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ColoredBox(
-              color: tone.overlay,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: t.space.xs,
-                  vertical: t.space.xxs,
-                ),
-                child: Text(
-                  amenidad.nombre,
-                  maxLines: 2,
-                  style: t.text.caption.copyWith(
-                    fontWeight: FontWeight.w700,
-                    // Sobre el velo oscuro: blanco fijo, no un rol de tema.
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

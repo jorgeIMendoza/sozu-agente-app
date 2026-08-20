@@ -34,7 +34,7 @@ class BannerActivacion extends StatelessWidget {
     if (!identidadBasicaCompleta) {
       return esDependiente
           ? 'Completa tu identidad para generar ofertas.'
-          : 'Completa tu identidad para incluir datos bancarios en tus ofertas.';
+          : 'Completa tu identidad para incluir datos bancarios en ofertas.';
     }
     return 'Completa tu perfil para recibir comisiones.';
   }
@@ -70,10 +70,7 @@ class BannerActivacion extends StatelessWidget {
             ],
           ),
           SizedBox(height: t.space.xxs),
-          Text(
-            _mensaje,
-            style: t.text.caption.copyWith(color: tone.fgMuted),
-          ),
+          Text(_mensaje, style: t.text.caption.copyWith(color: tone.fgMuted)),
           SizedBox(height: t.space.sm),
           SProgressBar(
             percent: porcentaje.toDouble(),

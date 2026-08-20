@@ -25,7 +25,10 @@ void main() {
     );
     final planos = await container.read(planosUnidadProvider(101).future);
 
-    expect(desarrollos.map((d) => d.nombre), ['Torre Margot', 'Distrito Andares']);
+    expect(desarrollos.map((d) => d.nombre), [
+      'Torre Margot',
+      'Distrito Andares',
+    ]);
     expect(desarrollos.first.precioDesde, 3250000.0);
     expect(desarrollos.last.agotado, isTrue);
     expect(ficha.desarrollo.nombre, 'Torre Margot');
@@ -153,18 +156,21 @@ void main() {
     expect(a == otra, isFalse);
   });
 
-  test('las opciones de nivel salen ordenadas por número, no por texto', () async {
-    final port = FakeInventarioPort();
-    final container = makeClientContainer(
-      overrides: [inventarioPortProvider.overrideWithValue(port)],
-    );
+  test(
+    'las opciones de nivel salen ordenadas por número, no por texto',
+    () async {
+      final port = FakeInventarioPort();
+      final container = makeClientContainer(
+        overrides: [inventarioPortProvider.overrideWithValue(port)],
+      );
 
-    final pagina = await container.read(
-      unidadesProvider(const ConsultaUnidades()).future,
-    );
+      final pagina = await container.read(
+        unidadesProvider(const ConsultaUnidades()).future,
+      );
 
-    expect(pagina.opciones.niveles, ['2', '9', '10']);
-  });
+      expect(pagina.opciones.niveles, ['2', '9', '10']);
+    },
+  );
 
   test('los esquemas y los meses de la unidad salen del desarrollo', () async {
     final port = FakeInventarioPort();
@@ -198,5 +204,48 @@ void main() {
     expect(filtros.ordenPrecio.clave, 'asc');
     expect(filtros.activos, 4);
     expect(const FiltrosUnidades().hayFiltros, isFalse);
+  });
+
+  test('la unidad lee los extras y su total, con y sin ellos', () {
+    final conExtras = Unidad.fromJson(const {
+      'id': 101,
+      'precio_lista': '9381714.05',
+      'precio_total': '9535014.05',
+      'extras_total': '153300.00',
+      'extras_bodegas': '153300.00',
+      'extras_estacionamientos': '0',
+      'extras': [
+        {'id': 1, 'tipo': 'bodega', 'nombre': 'B-12', 'costo': '153300.00'},
+        {'id': 2, 'tipo': 'estacionamiento', 'nombre': 'E-08', 'costo': '0'},
+      ],
+    });
+
+    expect(conExtras.precioAlCliente, 9535014.05);
+    expect(conExtras.extrasTotal, 153300.00);
+    expect(conExtras.extrasBodegas, 153300.00);
+    expect(conExtras.extrasEstacionamientos, 0);
+    // Los de costo 0 llegan a propósito, pero no se desglosan.
+    expect(conExtras.extras.length, 2);
+    expect(conExtras.extrasConCosto.single.nombre, 'B-12');
+    expect(conExtras.extrasConCosto.single.tipo, TipoExtra.bodega);
+    expect(conExtras.totalExtrasConCosto, 153300.00);
+
+    // Payload sin extras (backend anterior): se cae al precio de lista y no
+    // hay nada que desglosar.
+    final sinExtras = Unidad.fromJson(const {
+      'id': 102,
+      'precio_lista': '2980000.00',
+    });
+    expect(sinExtras.precioAlCliente, 2980000.00);
+    expect(sinExtras.extras, isEmpty);
+    expect(sinExtras.extrasConCosto, isEmpty);
+
+    // precio_total en 0 tampoco puede borrar el precio de la tarjeta.
+    final totalCero = Unidad.fromJson(const {
+      'id': 103,
+      'precio_lista': '1500000.00',
+      'precio_total': 0,
+    });
+    expect(totalCero.precioAlCliente, 1500000.00);
   });
 }

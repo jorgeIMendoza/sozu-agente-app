@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,7 @@ import 'package:sozu_agente_app/features/agente/pipeline/services/pipeline_texto
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 
 import '../agente_test_support.dart';
@@ -61,10 +64,7 @@ void main() {
     expect(find.textContaining('6 ofertas'), findsOneWidget);
     // Modo presentación activo por default: el monto abierto va enmascarado.
     expect(find.textContaining(kMascaraPresentacion), findsWidgets);
-    expect(
-      find.textContaining('cerrado sin razón registrada'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('cerrado sin razón registrada'), findsOneWidget);
     expect(find.text('O-000001'), findsOneWidget);
     expect(find.text('O-000003'), findsOneWidget);
     // El nombre del prospecto no se lee con el modo presentación activo.
@@ -76,11 +76,29 @@ void main() {
   ) async {
     await pintar(tester, const Size(1400, 1000));
 
-    await tester.tap(find.byTooltip('Desactivar modo presentación'));
+    // El INTERRUPTOR lo pinta el shell, no la pantalla: aquí se alterna el
+    // estado compartido, que es lo que el shell hace al tocarlo.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PipelineScreen)),
+    );
+    // Sin `await`: el estado cambia de forma síncrona y lo único que queda
+    // pendiente es guardar la preferencia, que en el test no tiene plugin.
+    unawaited(container.read(modoPresentacionProvider).establecer(false));
     await tester.pumpAndSettle();
 
     expect(find.text('Ana Ruiz'), findsWidgets);
     expect(find.textContaining(r'$1,000,000.00'), findsWidgets);
+  });
+
+  testWidgets('la pantalla NO monta su propio interruptor de presentación', (
+    tester,
+  ) async {
+    // Salía dos veces en teléfono: uno en la barra superior del shell y otro
+    // dentro del encabezado del pipeline.
+    await pintar(tester, const Size(390, 900));
+
+    expect(find.byTooltip('Activar modo presentación'), findsNothing);
+    expect(find.byTooltip('Desactivar modo presentación'), findsNothing);
   });
 
   testWidgets('la vista de tarjetas pinta una tarjeta por negocio', (
@@ -94,30 +112,31 @@ void main() {
     expect(find.byType(NegocioTarjeta), findsNWidgets(3));
   });
 
-  testWidgets('el tablero pinta una columna por etapa, con candado en las automáticas', (
-    tester,
-  ) async {
-    await pintar(tester, const Size(1400, 1000));
+  testWidgets(
+    'el tablero pinta una columna por etapa, con candado en las automáticas',
+    (tester) async {
+      await pintar(tester, const Size(1400, 1000));
 
-    await tester.tap(find.text('Tablero'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Tablero'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Nuevo'), findsOneWidget);
-    expect(find.text('Negociando'), findsOneWidget);
-    expect(find.text('Oferta enviada'), findsOneWidget);
-    expect(find.text('Cierre perdido'), findsOneWidget);
-    // La columna manual vacía invita a arrastrar; la automática solo informa.
-    expect(find.text('Arrastra aquí'), findsOneWidget);
-    expect(find.text('Sin negocios'), findsNothing);
-    // El negocio sin pipeline no se puede arrastrar: su botón lo dice.
-    expect(
-      find.byTooltip(
-        'Este negocio todavía no existe en el pipeline: no se puede mover de '
-        'etapa',
-      ),
-      findsOneWidget,
-    );
-  });
+      expect(find.text('Nuevo'), findsOneWidget);
+      expect(find.text('Negociando'), findsOneWidget);
+      expect(find.text('Oferta enviada'), findsOneWidget);
+      expect(find.text('Cierre perdido'), findsOneWidget);
+      // La columna manual vacía invita a arrastrar; la automática solo informa.
+      expect(find.text('Arrastra aquí'), findsOneWidget);
+      expect(find.text('Sin negocios'), findsNothing);
+      // El negocio sin pipeline no se puede arrastrar: su botón lo dice.
+      expect(
+        find.byTooltip(
+          'Este negocio todavía no existe en el pipeline: no se puede mover de '
+          'etapa',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('el filtro de etapa deja la pantalla con un solo negocio', (
     tester,
@@ -146,7 +165,7 @@ void main() {
     await tester.tap(find.text('A-1'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Detalle del negocio'), findsOneWidget);
+    expect(find.text('Detalle de Oferta'), findsOneWidget);
     // SSectionLabel (variante `label`) pinta en mayúsculas: el finder busca lo
     // que el design system realmente rinde, no el string que se le pasó.
     expect(find.text('ESQUEMAS DE PAGO (1)'), findsOneWidget);
@@ -198,14 +217,15 @@ void main() {
     expect(find.byTooltip('¿Por qué no avanzó?'), findsNothing);
   });
 
-  testWidgets('un fallo del backend deja un error con reintento, no una pantalla en blanco', (
-    tester,
-  ) async {
-    final port = FakePipelinePort()
-      ..proximoFallo = ApiError(0, 'network_error');
-    await pintar(tester, const Size(390, 900), port: port);
+  testWidgets(
+    'un fallo del backend deja un error con reintento, no una pantalla en blanco',
+    (tester) async {
+      final port = FakePipelinePort()
+        ..proximoFallo = ApiError(0, 'network_error');
+      await pintar(tester, const Size(390, 900), port: port);
 
-    expect(find.text('Sin conexión'), findsOneWidget);
-    expect(find.text('Reintentar'), findsOneWidget);
-  });
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(find.text('Reintentar'), findsOneWidget);
+    },
+  );
 }

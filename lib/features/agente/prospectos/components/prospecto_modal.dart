@@ -136,14 +136,13 @@ class HojaProspecto extends StatelessWidget {
                 color: tone.surfaceAlt,
                 border: Border(top: BorderSide(color: tone.border)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  for (final a in acciones) ...[
-                    a,
-                    if (a != acciones.last) SizedBox(width: t.space.sm),
-                  ],
-                ],
+              // Wrap y no Row: en 390 px el par "Cancelar" + "Guardando…" no
+              // cabe en una línea y un Row se desborda justo al guardar.
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: t.space.sm,
+                runSpacing: t.space.xs,
+                children: acciones,
               ),
             ),
         ],

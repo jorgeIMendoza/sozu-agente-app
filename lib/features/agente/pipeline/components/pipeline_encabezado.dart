@@ -15,8 +15,9 @@ class PipelineEncabezado extends StatelessWidget {
   final VistaPipeline vista;
   final ValueChanged<VistaPipeline> onVista;
 
+  /// Solo para enmascarar el monto abierto del resumen. El INTERRUPTOR lo pinta
+  /// el shell en todas las pantallas, no este encabezado.
   final bool modoPresentacion;
-  final VoidCallback onAlternarPresentacion;
 
   final TextEditingController buscador;
   final ValueChanged<String> onBuscar;
@@ -25,11 +26,14 @@ class PipelineEncabezado extends StatelessWidget {
   final List<SSelectOption<String>> opcionesEtapa;
   final ValueChanged<String> onEtapa;
 
-  /// Permiso de generar oferta en el pipeline.
+  /// Permiso de CREAR en la vista del pipeline (`crear`), el mismo que gatea el
+  /// botón en la web. El permiso de generar la oferta es de Inventario y lo
+  /// aplica la pantalla de unidades, que es a donde lleva este botón.
   final bool puedeCrear;
 
-  /// Sin capacitación terminada no se puede generar oferta, aunque haya permiso.
-  final bool capacitacionCompleta;
+  /// El candado de capacitación aplica: lo resuelve la pantalla, porque solo
+  /// pesa sobre el Agente Inmobiliario (rol 3).
+  final bool faltaCapacitacion;
 
   final VoidCallback onNuevaOferta;
 
@@ -44,14 +48,13 @@ class PipelineEncabezado extends StatelessWidget {
     required this.vista,
     required this.onVista,
     required this.modoPresentacion,
-    required this.onAlternarPresentacion,
     required this.buscador,
     required this.onBuscar,
     required this.etapaFiltro,
     required this.opcionesEtapa,
     required this.onEtapa,
     required this.puedeCrear,
-    required this.capacitacionCompleta,
+    required this.faltaCapacitacion,
     required this.onNuevaOferta,
     this.onRefrescar,
   });
@@ -90,18 +93,6 @@ class PipelineEncabezado extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _SelectorVista(vista: vista, onVista: onVista),
-                IconButton(
-                  tooltip: modoPresentacion
-                      ? 'Desactivar modo presentación'
-                      : 'Activar modo presentación',
-                  onPressed: onAlternarPresentacion,
-                  icon: Icon(
-                    modoPresentacion
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: modoPresentacion ? tone.warningFg : tone.fgMuted,
-                  ),
-                ),
                 if (onRefrescar != null)
                   IconButton(
                     tooltip: 'Recargar',
@@ -109,7 +100,7 @@ class PipelineEncabezado extends StatelessWidget {
                     icon: Icon(Icons.refresh, color: tone.fgMuted),
                   ),
                 if (puedeCrear) ...[
-                  if (!capacitacionCompleta)
+                  if (faltaCapacitacion)
                     Tooltip(
                       message:
                           'Termina tu capacitación para poder generar ofertas.',

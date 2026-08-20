@@ -380,8 +380,10 @@ class Domicilio {
   String get resumen {
     final partes = <String>[
       if ((calle ?? '').trim().isNotEmpty)
-        [calle!.trim(), if ((numExt ?? '').trim().isNotEmpty) numExt!.trim()]
-            .join(' '),
+        [
+          calle!.trim(),
+          if ((numExt ?? '').trim().isNotEmpty) numExt!.trim(),
+        ].join(' '),
       if ((colonia ?? '').trim().isNotEmpty) colonia!.trim(),
       if ((codigoPostal ?? '').trim().isNotEmpty) codigoPostal!.trim(),
     ];
@@ -535,7 +537,8 @@ class CuentaDeDispersion {
   String get numeroEnmascarado =>
       (ultimos4 ?? '').isEmpty ? '' : '•••• •••• •••• $ultimos4';
 
-  String get estatusLegible => validada ? 'Validada' : 'Pendiente de activación';
+  String get estatusLegible =>
+      validada ? 'Validada' : 'Pendiente de activación';
 }
 
 // ── Expediente ─────────────────────────────────────────────────────────────
@@ -627,7 +630,8 @@ class DocumentoDelExpediente {
       nombre: '${j['nombre'] ?? 'Documento'}',
       emisor: '${j['emisor'] ?? ''}',
       ayuda: '${j['hint'] ?? ''}',
-      tipos: (j['tipos'] as List?)?.map(intDe).whereType<int>().toList() ??
+      tipos:
+          (j['tipos'] as List?)?.map(intDe).whereType<int>().toList() ??
           const [],
       identificacion: switch ('${j['modo'] ?? ''}') {
         'ine' => TipoIdentificacion.ine,
@@ -895,10 +899,14 @@ class PerfilAgente {
   bool get puedeEditarFiscal => puedeEditarBanco;
 }
 
-/// Datos fiscales que el agente confirma al subir su Constancia. Es el ÚNICO
-/// camino para escribir RFC, régimen y domicilio fiscal (ver [PerfilAgentePort]).
+/// Datos fiscales que viajan con la Constancia: los que el servidor extrajo del
+/// PDF (`csf_campos`) o los que el agente confirmó al entregarla.
+///
+/// Lo que el agente escriba GANA sobre lo que el servidor lea del documento: el
+/// backend solo escribe lo extraído donde el cuerpo no traiga ya el campo.
 class DatosDeConstancia {
   final String? rfc;
+  final String? curp;
   final String? nombreLegal;
   final String? regimen;
   final String? codigoPostal;
@@ -907,8 +915,13 @@ class DatosDeConstancia {
   final String? numInt;
   final String? colonia;
 
+  /// El régimen que leyó el servidor coincide con el catálogo del SAT. En false
+  /// NO se guarda: `personas.regimen` guarda la clave, no el texto del PDF.
+  final bool regimenResuelto;
+
   const DatosDeConstancia({
     this.rfc,
+    this.curp,
     this.nombreLegal,
     this.regimen,
     this.codigoPostal,
@@ -916,10 +929,25 @@ class DatosDeConstancia {
     this.numExt,
     this.numInt,
     this.colonia,
+    this.regimenResuelto = false,
   });
+
+  factory DatosDeConstancia.desde(Map<String, dynamic> j) => DatosDeConstancia(
+    rfc: j['rfc'] as String?,
+    curp: j['curp'] as String?,
+    nombreLegal: j['nombre'] as String?,
+    regimen: j['regimen'] as String?,
+    codigoPostal: j['codigo_postal'] as String?,
+    calle: j['calle'] as String?,
+    numExt: j['num_ext'] as String?,
+    numInt: j['num_int'] as String?,
+    colonia: j['colonia'] as String?,
+    regimenResuelto: j['regimen_resuelto'] == true,
+  );
 
   bool get vacio => [
     rfc,
+    curp,
     nombreLegal,
     regimen,
     codigoPostal,
@@ -928,6 +956,58 @@ class DatosDeConstancia {
     numInt,
     colonia,
   ].every((v) => (v ?? '').trim().isEmpty);
+
+  /// Cómo se le resume al agente lo que quedó capturado del documento.
+  List<String> get resumen => [
+    if ((rfc ?? '').isNotEmpty) 'RFC',
+    if ((curp ?? '').isNotEmpty) 'CURP',
+    if ((nombreLegal ?? '').isNotEmpty) 'nombre',
+    if ((regimen ?? '').isNotEmpty && regimenResuelto) 'régimen',
+    if ((codigoPostal ?? '').isNotEmpty ||
+        (calle ?? '').isNotEmpty ||
+        (colonia ?? '').isNotEmpty)
+      'domicilio fiscal',
+  ];
+}
+
+/// Veredicto del backend al entregar un documento del expediente.
+///
+/// Con la Constancia el servidor lee el PDF y decide él mismo si la valida: el
+/// app no propone estatus. [constanciaValidada], [motivo] y [campos] llegan
+/// AUSENTES del JSON cuando no aplican, así que null es un dato, no un hueco.
+class ResultadoDeCarga {
+  final EstadoDocumento estado;
+
+  /// Solo en la Constancia: el servidor la validó él mismo. Null cuando el
+  /// documento no es una Constancia.
+  final bool? constanciaValidada;
+
+  /// Por qué no la pudo validar, ya redactado para el agente.
+  final String? motivo;
+
+  /// Lo que el servidor extrajo del documento y ya guardó.
+  final DatosDeConstancia? campos;
+
+  const ResultadoDeCarga({
+    this.estado = EstadoDocumento.pendiente,
+    this.constanciaValidada,
+    this.motivo,
+    this.campos,
+  });
+
+  factory ResultadoDeCarga.desde(Map<String, dynamic> j) {
+    final campos = j['csf_campos'];
+    return ResultadoDeCarga(
+      estado: EstadoDocumento.desde(j['estatus']),
+      constanciaValidada: j.containsKey('csf_validada')
+          ? j['csf_validada'] == true
+          : null,
+      motivo: j['csf_motivo'] as String?,
+      campos: campos is Map
+          ? DatosDeConstancia.desde(Map<String, dynamic>.from(campos))
+          : null,
+    );
+  }
 }
 
 // ── Puerto ─────────────────────────────────────────────────────────────────
@@ -938,12 +1018,10 @@ class DatosDeConstancia {
 /// Todos los métodos lanzan `ApiError` con el código del backend; los textos los
 /// decide la pantalla.
 ///
-/// ⚠️ **No hay forma de escribir RFC, régimen ni domicilio fiscal directamente.**
-/// El backend solo los acepta como [DatosDeConstancia] al subir la Constancia de
-/// Situación Fiscal ([subirDocumento] con [TiposDocumento.constanciaFiscal]).
-/// Ese es el diseño: los datos fiscales tienen que venir del documento que los
-/// respalda, no de lo que alguien escriba en un formulario. Lo único editable a
-/// mano es el uso del CFDI ([guardarUsoCfdi]).
+/// Los datos fiscales tienen DOS caminos y no compiten: [guardarFiscal] es el
+/// capturador (lo que el agente escribe, y lo que cierra su paso fiscal) y
+/// [subirDocumento] con [TiposDocumento.constanciaFiscal] es el documento que los
+/// respalda, del que el servidor los lee solo. Lo que el agente escriba gana.
 abstract interface class PerfilAgentePort {
   /// Lectura completa del perfil.
   Future<PerfilAgente> cargar();
@@ -964,6 +1042,18 @@ abstract interface class PerfilAgentePort {
   /// Uso del CFDI con el que el agente factura.
   Future<void> guardarUsoCfdi(String? codigo);
 
+  /// Datos fiscales completos: RFC, régimen, uso del CFDI y domicilio fiscal.
+  /// Es el paso que le habilita las comisiones al agente independiente.
+  ///
+  /// Todo es obligatorio menos [Domicilio.numInt]. El agente dependiente recibe
+  /// `forbidden_field`: esos datos los lleva su inmobiliaria.
+  Future<void> guardarFiscal({
+    required String rfc,
+    required String regimen,
+    required String usoCfdi,
+    required Domicilio domicilio,
+  });
+
   /// Frase de presentación. Devuelve la que quedó guardada.
   Future<String?> guardarPresentacion(String? frase);
 
@@ -973,16 +1063,16 @@ abstract interface class PerfilAgentePort {
   /// Quita la foto: el agente vuelve a mostrar su inicial.
   Future<void> borrarFoto();
 
-  /// Entrega un documento del expediente. Devuelve en qué estado quedó.
+  /// Entrega un documento del expediente y devuelve el veredicto del servidor.
   ///
-  /// [datos] solo aplica a la Constancia y es el único camino para escribir los
-  /// datos fiscales.
-  Future<EstadoDocumento> subirDocumento({
+  /// El estatus NO se propone desde el app: con la Constancia el servidor lee el
+  /// PDF y la valida él mismo. [datos] solo aplica a la Constancia, y lo que
+  /// traiga gana sobre lo que el servidor extraiga.
+  Future<ResultadoDeCarga> subirDocumento({
     required int tipo,
     required String base64,
     required String nombre,
     String? contentType,
-    bool validado = false,
     DatosDeConstancia? datos,
   });
 

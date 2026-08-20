@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/core/format.dart';
+import 'package:sozu_agente_app/features/agente/citas/components/agendar_cita_hoja.dart';
+import 'package:sozu_agente_app/features/agente/citas/ports/citas_port.dart';
+import 'package:sozu_agente_app/features/agente/citas/services/seleccion_de_cita.dart';
 import 'package:sozu_agente_app/features/agente/home/components/banner_activacion.dart';
 import 'package:sozu_agente_app/features/agente/home/components/estado_error_agente.dart';
 import 'package:sozu_agente_app/features/agente/home/components/hoja_detalle_cita.dart';
@@ -13,10 +18,13 @@ import 'package:sozu_agente_app/features/agente/home/components/tarjeta_cita.dar
 import 'package:sozu_agente_app/features/agente/home/components/tarjeta_kpi.dart';
 import 'package:sozu_agente_app/features/agente/home/ports/inicio_port.dart';
 import 'package:sozu_agente_app/features/agente/home/providers/inicio_providers.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
 import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/components/prospecto_form_hoja.dart';
+import 'package:sozu_agente_app/features/agente/prospectos/providers/prospectos_providers.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/fx.dart';
 
@@ -24,15 +32,48 @@ import 'package:sozu_agente_app/widgets/fx.dart';
 /// centra el contenido; esto evita que las tarjetas se estiren a 1280 px.
 const double _anchoContenido = 1040;
 
-/// Destino de los dos atajos.
-///
-/// "Agendar cita" también va a Prospectos porque agendar empieza por elegir a
-/// quién se cita. La pantalla de agenda y su diálogo los está armando otro
-/// agente y todavía no existen como ruta: mandar ahí hoy caería en la pantalla
-/// de error del router.
-const String _rutaProspectos = '/prospectos';
+/// Destinos a los que salta Inicio.
 const String _rutaComisiones = '/comisiones';
 const String _rutaPerfil = '/perfil';
+
+/// La capacitación del agente se reagenda en su propia pantalla, igual que en el
+/// portal web.
+const String _rutaCapacitacion = '/perfil/capacitacion';
+
+/// Por qué el reagendado de una capacitación sale de Inicio.
+const String _notaCapacitacion =
+    'Tu capacitación se reagenda en Perfil · Capacitación, donde ves todas tus '
+    'citas.';
+
+/// Identificadores de telemetría, IDÉNTICOS a los del portal web: si difieren,
+/// el mismo botón cuenta dos veces en el tablero de CTA.
+const String _rutaVistaWeb = '/admin/agent/inicio';
+const String _paginaCta = 'agent_inicio';
+
+/// Abre el agendado y, si quedó, refresca el tablero y avisa.
+Future<void> _agendar(
+  BuildContext context,
+  WidgetRef ref, {
+  ProspectoParaCita? prospecto,
+  DesarrolloParaCita? desarrollo,
+  bool reagendar = false,
+}) async {
+  final cita = await mostrarAgendarCita(
+    context,
+    prospecto: prospecto,
+    desarrollo: desarrollo,
+    reagendar: reagendar,
+  );
+  if (cita == null || !context.mounted) return;
+  ref.invalidate(resumenInicioProvider);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        cita.aviso ?? (reagendar ? 'Cita reagendada.' : 'Cita agendada.'),
+      ),
+    ),
+  );
+}
 
 /// Inicio del Portal del Agente: quién es, qué le falta para operar, qué puede
 /// capturar ahora, cómo va de números y qué tiene agendado.
@@ -40,11 +81,88 @@ const String _rutaPerfil = '/perfil';
 /// El orden no es decorativo: primero lo que bloquea (activación del perfil),
 /// luego lo que produce (captura), después el resultado (comisiones) y al final
 /// los compromisos con fecha.
-class InicioScreen extends ConsumerWidget {
+class InicioScreen extends ConsumerStatefulWidget {
   const InicioScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InicioScreen> createState() => _InicioScreenState();
+}
+
+class _InicioScreenState extends ConsumerState<InicioScreen> {
+  late final AppLifecycleListener _cicloDeVida;
+
+  @override
+  void initState() {
+    super.initState();
+    final telemetria = ref.read(telemetriaPortProvider);
+    unawaited(telemetria.registrarVista(_rutaVistaWeb));
+    unawaited(
+      telemetria.registrarCta(
+        pagina: _paginaCta,
+        elementoId: 'page_view',
+        tipo: 'page',
+      ),
+    );
+
+    // La agenda se mueve desde el panel admin mientras el app está en segundo
+    // plano. La web se enteraba por realtime sobre `reservas_citas`, que aquí no
+    // aplica (suscribirse a una tabla rompe "cero queries a tablas"), y un timer
+    // periódico gastaría batería pegándole a producción sin nadie mirando: se
+    // recarga al volver al frente y ya.
+    _cicloDeVida = AppLifecycleListener(onResume: _alVolverAlFrente);
+  }
+
+  @override
+  void dispose() {
+    _cicloDeVida.dispose();
+    super.dispose();
+  }
+
+  void _alVolverAlFrente() {
+    if (!mounted) return;
+    ref.invalidate(resumenInicioProvider);
+  }
+
+  /// Registra el clic de un CTA. No se espera: la telemetría se traga sus
+  /// fallos y nunca retrasa la acción que la disparó.
+  void _cta(String elementoId, String etiqueta) {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: _paginaCta,
+            elementoId: elementoId,
+            etiqueta: etiqueta,
+          ),
+    );
+  }
+
+  /// El tablero y la activación se recargan JUNTOS: refrescar solo los números
+  /// deja el banner y el porcentaje viejos después de completar un paso del
+  /// expediente.
+  Future<void> _recargar() async {
+    ref.invalidate(sesionProvider);
+    ref.invalidate(resumenInicioProvider);
+    try {
+      await ref.read(resumenInicioProvider.future);
+    } catch (_) {
+      // El error ya lo pinta la pantalla; aquí solo se cierra el gesto.
+    }
+  }
+
+  /// Alta de prospecto con el MISMO formulario de la cartera: el atajo es para
+  /// capturar en el momento, no para ir a mirar la lista.
+  Future<void> _nuevoProspecto() async {
+    final guardado = await editarProspecto(context);
+    if (guardado != true || !mounted) return;
+    ref.invalidate(carteraProspectosProvider);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Prospecto guardado')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = context.s;
     final resumen = ref.watch(resumenInicioProvider);
 
@@ -69,6 +187,10 @@ class InicioScreen extends ConsumerWidget {
         : 'Agente';
     final rol = header?.rol ?? identidad?.rolNombre ?? 'Agente';
 
+    // La insignia de verificación es del aliado externo, igual que el banner de
+    // activación: es el único con expediente que verificar.
+    final esAliadoExterno = identidad?.esAgenteInmobiliario == true;
+
     return Scaffold(
       // Sin `backgroundColor`: el fondo sale del tema, que es el MISMO neutro que
       // pinta el shell del portal. Preguntar por el modo portal para forzar
@@ -79,14 +201,7 @@ class InicioScreen extends ConsumerWidget {
       appBar: const PortalTopBar(title: 'Inicio'),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(resumenInicioProvider);
-            try {
-              await ref.read(resumenInicioProvider.future);
-            } catch (_) {
-              // El error ya lo pinta la pantalla; aquí solo se cierra el gesto.
-            }
-          },
+          onRefresh: _recargar,
           child: ContentFrame(
             maxWidth: _anchoContenido,
             child: ListView(
@@ -104,19 +219,22 @@ class InicioScreen extends ConsumerWidget {
                     '${resumen.valueOrNull?.propiedadesActivas ?? 0}',
                   ),
                   ultimoAcceso: resumen.valueOrNull?.ultimoAcceso,
+                  verificado: esAliadoExterno ? onboarding.verificado : null,
                 ),
 
                 // Activación: solo el aliado externo tiene expediente que
                 // completar, y solo mientras no esté al 100%.
-                if (identidad?.esAgenteInmobiliario == true &&
-                    onboarding.porcentaje < 100) ...[
+                if (esAliadoExterno && onboarding.porcentaje < 100) ...[
                   SizedBox(height: t.space.md),
                   BannerActivacion(
                     porcentaje: onboarding.porcentaje,
                     capacitacionCompleta: onboarding.capacitacionCompleta,
                     identidadBasicaCompleta: onboarding.identidadBasicaCompleta,
                     esDependiente: identidad?.esDependiente ?? false,
-                    onCompletar: () => context.go(_rutaPerfil),
+                    onCompletar: () {
+                      _cta('btn_completar_perfil', 'Completar ahora');
+                      context.go(_rutaPerfil);
+                    },
                   ),
                 ],
 
@@ -124,7 +242,16 @@ class InicioScreen extends ConsumerWidget {
                 // números. Con la red caída el agente sigue pudiendo capturar.
                 if (permisos.crear) ...[
                   SizedBox(height: t.space.md),
-                  _Atajos(onNavegar: (ruta) => context.go(ruta)),
+                  _Atajos(
+                    onNuevoProspecto: () {
+                      _cta('btn_nuevo_prospecto', 'Nuevo prospecto');
+                      unawaited(_nuevoProspecto());
+                    },
+                    onAgendar: () {
+                      _cta('btn_agendar_cita', 'Agendar cita');
+                      unawaited(_agendar(context, ref));
+                    },
+                  ),
                 ],
 
                 SizedBox(height: t.space.xs),
@@ -138,8 +265,7 @@ class InicioScreen extends ConsumerWidget {
                   error: (e, _) => [
                     EstadoErrorAgente(
                       error: e,
-                      onReintentar: () =>
-                          ref.invalidate(resumenInicioProvider),
+                      onReintentar: () => ref.invalidate(resumenInicioProvider),
                     ),
                   ],
                   data: (data) => [
@@ -151,11 +277,9 @@ class InicioScreen extends ConsumerWidget {
                           : null,
                     ),
                     if (data.citas.isNotEmpty) ...[
-                      _TituloSeccion(
-                        texto: data.citas.length > kMaxCitasInicio
-                            ? 'Citas (${data.citas.length})'
-                            : 'Citas',
-                      ),
+                      // Sin conteo, como la web: el número de la agenda completa
+                      // no cuadra con las tres citas que se alcanzan a ver.
+                      const _TituloSeccion(texto: 'Citas'),
                       _Citas(
                         citas: ref.watch(citasInicioProvider),
                         enmascarar: modo.enmascararOpcional,
@@ -181,16 +305,33 @@ class _TituloSeccion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SSectionLabel(text: texto, trailing: accion);
+    final accion = this.accion;
+    if (accion == null) return SSectionLabel(text: texto);
+
+    // Wrap, y no el `trailing` de SSectionLabel: ese va sin flex y el aviso de
+    // presentación no cabe al lado del título en un teléfono. Como la web
+    // (`flex-wrap`), baja de línea en vez de desbordar.
+    final t = context.s;
+    return Wrap(
+      spacing: t.space.xs,
+      runSpacing: t.space.xxs,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SSectionLabel(text: texto),
+        accion,
+      ],
+    );
   }
 }
 
 /// Los dos atajos de captura. En pantalla ancha van lado a lado; en teléfono,
 /// apilados.
 class _Atajos extends StatelessWidget {
-  final void Function(String ruta) onNavegar;
+  final VoidCallback onNuevoProspecto;
+  final VoidCallback onAgendar;
 
-  const _Atajos({required this.onNavegar});
+  const _Atajos({required this.onNuevoProspecto, required this.onAgendar});
 
   @override
   Widget build(BuildContext context) {
@@ -200,13 +341,13 @@ class _Atajos extends StatelessWidget {
         icono: Icons.person_add_alt_outlined,
         titulo: 'Nuevo prospecto',
         subtitulo: 'Captura un comprador potencial',
-        onTap: () => onNavegar(_rutaProspectos),
+        onTap: onNuevoProspecto,
       ),
       TarjetaAccion(
         icono: Icons.event_available_outlined,
         titulo: 'Agendar cita',
         subtitulo: 'Coordina una visita al desarrollo',
-        onTap: () => onNavegar(_rutaProspectos),
+        onTap: onAgendar,
       ),
     ];
 
@@ -331,6 +472,48 @@ class _Citas extends ConsumerWidget {
 
   const _Citas({required this.citas, required this.enmascarar});
 
+  /// Reagendar es agendar de nuevo sobre el mismo prospecto y desarrollo.
+  ///
+  /// La capacitación va a su pantalla: `agendar_capacitacion` MUEVE la cita solo
+  /// si el cupo nuevo es de la misma configuración, y aquí no la sabemos
+  /// (`CitaAgente` trae el nombre de la agenda, no su id), así que reagendar
+  /// desde Inicio podría dejarle dos capacitaciones sin verlas.
+  void _reagendar(BuildContext context, WidgetRef ref, CitaAgente cita) {
+    if (cita.idTipoCita == kTipoCitaCapacitacion) {
+      context.push(_rutaCapacitacion);
+      return;
+    }
+    final idProspecto = cita.idPersonaProspecto;
+    final idDesarrollo = cita.idProyecto;
+    _agendar(
+      context,
+      ref,
+      reagendar: true,
+      // Sin ids no hay nada que precargar: la hoja los pide como si fuera una
+      // cita nueva en vez de mandar al servidor un reagendado incompleto.
+      prospecto: idProspecto == null
+          ? null
+          : ProspectoParaCita(
+              idPersona: idProspecto,
+              nombre: cita.prospectoNombre ?? 'Prospecto',
+              desarrollos: idDesarrollo == null
+                  ? const []
+                  : [
+                      DesarrolloParaCita(
+                        id: idDesarrollo,
+                        nombre: cita.proyectoNombre ?? 'Desarrollo',
+                      ),
+                    ],
+            ),
+      desarrollo: idDesarrollo == null
+          ? null
+          : DesarrolloParaCita(
+              id: idDesarrollo,
+              nombre: cita.proyectoNombre ?? 'Desarrollo',
+            ),
+    );
+  }
+
   Future<void> _abrirDetalle(
     BuildContext context,
     WidgetRef ref,
@@ -340,6 +523,10 @@ class _Citas extends ConsumerWidget {
       context,
       cita: cita,
       nombreProspecto: enmascarar(cita.prospectoNombre),
+      onReagendar: () => _reagendar(context, ref, cita),
+      notaReagendar: cita.idTipoCita == kTipoCitaCapacitacion
+          ? _notaCapacitacion
+          : null,
       onCancelar: () async {
         try {
           await ref.read(inicioPortProvider).cancelarCita(cita.id);
@@ -359,9 +546,9 @@ class _Citas extends ConsumerWidget {
     );
     if (cancelada != true || !context.mounted) return;
     ref.invalidate(resumenInicioProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cita cancelada.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Cita cancelada.')));
   }
 
   @override

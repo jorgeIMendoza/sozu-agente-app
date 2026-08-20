@@ -1,3 +1,4 @@
+import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
 /// Traducción de los códigos de error del perfil a algo que el agente pueda
@@ -17,7 +18,8 @@ String? campoDelError(String codigo) => switch (codigo) {
   'nombre_requerido' => 'nombre',
   'telefono_invalido' => 'telefono',
   'curp_requerido' || 'curp_invalido' || 'curp_duplicado' => 'curp',
-  'rfc_duplicado' => 'rfc',
+  'rfc_invalido' || 'rfc_duplicado' => 'rfc',
+  'regimen_invalido' => 'regimen',
   'banco_o_cuenta_requeridos' ||
   'cuenta_solo_digitos' ||
   'cuenta_longitud_invalida' => 'numero_cuenta',
@@ -46,8 +48,22 @@ String mensajeDeError(ApiError e) => switch (e.code) {
     'Ese RFC ya está registrado en otra cuenta. Revísalo; si es tuyo, '
         'avísale a tu contacto en SOZU.',
 
+  // ── Datos fiscales ─────────────────────────────────────────────────────
+  'rfc_invalido' =>
+    'El RFC no tiene el formato oficial: 13 caracteres si eres persona física '
+        'y 12 si eres persona moral, como PEGJ850101H2A.',
+  'regimen_invalido' =>
+    'Ese régimen fiscal no está en el catálogo del SAT. Vuelve a elegirlo de '
+        'la lista.',
+  'campos_incompletos' =>
+    'Para cerrar tu paso fiscal se necesitan todos los datos: RFC, régimen, '
+        'uso del CFDI y tu domicilio fiscal completo (calle, número exterior, '
+        'colonia, código postal, país, estado y municipio). Solo el número '
+        'interior es opcional.',
+
   // ── Presentación y foto ────────────────────────────────────────────────
-  'frase_demasiado_larga' => 'Tu presentación no puede pasar de 280 caracteres.',
+  'frase_demasiado_larga' =>
+    'Tu presentación no puede pasar de 280 caracteres.',
   'mime_no_soportado' => 'Solo se aceptan imágenes JPG, PNG o WebP.',
   'imagen_requerida' => 'No llegó la imagen. Vuelve a elegirla.',
   'imagen_invalida' => 'No pudimos leer la imagen. Elige otra.',
@@ -67,13 +83,15 @@ String mensajeDeError(ApiError e) => switch (e.code) {
     'No pudimos guardar el archivo. Revisa tu conexión e intenta de nuevo.',
 
   // ── Cuenta de dispersión ───────────────────────────────────────────────
-  'banco_o_cuenta_requeridos' => 'Elige tu banco y captura el número de cuenta.',
+  'banco_o_cuenta_requeridos' =>
+    'Elige tu banco y captura el número de cuenta.',
   'titular_requerido' => 'Escribe el nombre del titular de la cuenta.',
   'cuenta_solo_digitos' => 'El número de cuenta solo puede tener dígitos.',
   'cuenta_longitud_invalida' =>
     'El número de cuenta debe tener entre 8 y 34 dígitos.',
   'clabe_invalida' => 'La CLABE debe tener exactamente 18 dígitos.',
-  'clabe_igual_a_cuenta' => 'La CLABE y el número de cuenta no pueden ser iguales.',
+  'clabe_igual_a_cuenta' =>
+    'La CLABE y el número de cuenta no pueden ser iguales.',
   'evidencia_requerida' =>
     'Adjunta la carátula de tu estado de cuenta: sin ella no podemos validarla.',
   'evidencia_invalida' => 'No pudimos leer la carátula. Elige otro archivo.',
@@ -103,6 +121,9 @@ String mensajeDeError(ApiError e) => switch (e.code) {
         'avísale a tu contacto en SOZU.',
   'network_error' =>
     'No pudimos conectar. Revisa tu conexión e intenta de nuevo.',
+  'internal_error' =>
+    'Algo se rompió de nuestro lado y no se guardó. Intenta de nuevo; si '
+        'sigue, avísale a tu contacto en SOZU.',
   'invalid_action' =>
     'Esta función todavía no está disponible en tu versión de la app. '
         'Actualízala e intenta de nuevo.',
@@ -121,4 +142,35 @@ String tituloDeErrorDeCarga(Object error) {
 String mensajeDeErrorDeCarga(Object error) {
   if (error is ApiError) return mensajeDeError(error);
   return 'Algo se rompió de nuestro lado. Intenta de nuevo.';
+}
+
+// ── Veredicto de un documento entregado ──────────────────────────────────────
+
+/// Qué se le dice al agente después de entregar un documento del expediente.
+///
+/// Con la Constancia el veredicto lo da el SERVIDOR, que lee el PDF: su
+/// [ResultadoDeCarga.motivo] ya viene redactado para el agente (bajarla del SAT,
+/// no escanearla, actualizarla) y se muestra TAL CUAL, sin envolverlo en un
+/// texto propio que lo contradiga.
+String mensajeDeCarga(ResultadoDeCarga resultado) {
+  if (resultado.constanciaValidada == true) {
+    final campos = resultado.campos?.resumen ?? const <String>[];
+    return campos.isEmpty
+        ? 'Constancia validada. Tu información fiscal quedó registrada.'
+        : 'Constancia validada: tomamos ${_enumerar(campos)} del documento.';
+  }
+  final motivo = (resultado.motivo ?? '').trim();
+  if (motivo.isNotEmpty) {
+    return '$motivo Guardamos tu archivo: queda pendiente de revisión manual.';
+  }
+  return resultado.estado == EstadoDocumento.validado
+      ? 'Documento validado.'
+      : 'Documento enviado. Queda pendiente de validación.';
+}
+
+/// "RFC, CURP y domicilio fiscal": lista en prosa, no separada por comas hasta
+/// el final.
+String _enumerar(List<String> partes) {
+  if (partes.length == 1) return partes.first;
+  return '${partes.sublist(0, partes.length - 1).join(', ')} y ${partes.last}';
 }

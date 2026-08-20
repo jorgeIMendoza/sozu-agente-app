@@ -20,6 +20,28 @@ class FakeInventarioPort implements InventarioPort {
   /// Últimos filtros con los que se pidieron unidades.
   ConsultaUnidades? ultimaConsulta;
 
+  /// Cuántas amenidades trae la ficha. 1 por defecto (la que fija el
+  /// contrato); subirlo sirve para probar el tope de la rejilla.
+  int amenidades = 1;
+
+  /// La ficha trae showroom de ventas. Sin él, los puntos de interés ocupan su
+  /// lugar en la sección de Ubicación.
+  bool conShowroom = true;
+
+  /// La unidad no tiene ningún plano cargado: el detalle no debe ofrecer el
+  /// botón que lleva a la pantalla vacía.
+  bool planosVacios = false;
+
+  /// Páginas que dice tener el resultado de unidades.
+  int totalPaginas = 1;
+
+  /// Retraso de `unidades`, para observar el estado intermedio al paginar.
+  Duration retrasoUnidades = Duration.zero;
+
+  /// Payload de unidades SIN los campos de extras, como respondía el backend
+  /// antes de mandarlos: la app tiene que caer al precio de lista.
+  bool sinExtras = false;
+
   void _revisar(String metodo) {
     log.add(metodo);
     final f = nextFailure;
@@ -72,19 +94,26 @@ class FakeInventarioPort implements InventarioPort {
         'fecha_entrega': '2027-06-30',
         'url_publica': 'https://www.sozu.com/desarrollo/torre-margot/',
       },
-      'showroom': {
-        'nombre': 'Showroom Margot',
-        'direccion': 'Av. Vallarta 1002',
-        'latitud': '20.6740',
-        'longitud': '-103.4060',
-      },
+      'showroom': conShowroom
+          ? {
+              'nombre': 'Showroom Margot',
+              'direccion': 'Av. Vallarta 1002',
+              'latitud': '20.6740',
+              'longitud': '-103.4060',
+            }
+          : null,
       'stats': {'disponibles': 12, 'total': 80},
       'avance': {
         'pct': 45,
         'etapa_actual': 'Obra gris',
         'milestones': [
           {'etapa': 'Cimentación', 'pct': 20, 'completada': true},
-          {'etapa': 'Obra gris', 'pct': 45, 'completada': false, 'es_actual': true},
+          {
+            'etapa': 'Obra gris',
+            'pct': 45,
+            'completada': false,
+            'es_actual': true,
+          },
         ],
         'video': {
           'url_embed': 'https://www.youtube.com/embed/abc123',
@@ -92,7 +121,13 @@ class FakeInventarioPort implements InventarioPort {
         },
       },
       'amenidades': [
-        {'id': 3, 'nombre': 'Alberca', 'foto': 'https://cdn.sozu.com/alberca.webp'},
+        {
+          'id': 3,
+          'nombre': 'Alberca',
+          'foto': 'https://cdn.sozu.com/alberca.webp',
+        },
+        for (var i = 2; i <= amenidades; i++)
+          {'id': 3 + i, 'nombre': 'Amenidad $i', 'foto': null},
       ],
       'modelos': [
         {
@@ -119,7 +154,10 @@ class FakeInventarioPort implements InventarioPort {
         {'id': 2, 'nombre': 'Plaza Andares', 'distancia_km': '0.8'},
       ],
       'documentos': {
-        'brochure': {'id': 30, 'url': 'https://cdn.sozu.com/brochure.pdf?token=x'},
+        'brochure': {
+          'id': 30,
+          'url': 'https://cdn.sozu.com/brochure.pdf?token=x',
+        },
         'ficha_tecnica': null,
       },
       'fecha_entrega': '2027-06-30',
@@ -130,14 +168,37 @@ class FakeInventarioPort implements InventarioPort {
   Future<PaginaUnidades> unidades(ConsultaUnidades consulta) async {
     _revisar('unidades:${consulta.pagina}:${consulta.porPagina}');
     ultimaConsulta = consulta;
+    if (retrasoUnidades > Duration.zero) await Future.delayed(retrasoUnidades);
     if (sinAcceso) return PaginaUnidades.fromJson(const {});
-    return PaginaUnidades.fromJson(const {
+    return PaginaUnidades.fromJson({
       'propiedades': [
         {
           'id': 101,
           'numero_propiedad': '1203',
           'numero_piso': '12',
           'precio_lista': '3250000.00',
+          if (!sinExtras) ...{
+            // Espejo de V-503 BELLARA: la bodega sube el precio 153,300.00.
+            'precio_total': '3403300.00',
+            'extras_total': '153300.00',
+            'extras_bodegas': '153300.00',
+            'extras_estacionamientos': '0',
+            'extras': [
+              {
+                'id': 4001,
+                'tipo': 'bodega',
+                'nombre': 'B-12',
+                'costo': '153300.00',
+              },
+              // Extra sin costo: llega a propósito y NO se desglosa.
+              {
+                'id': 5001,
+                'tipo': 'estacionamiento',
+                'nombre': 'E-08',
+                'costo': '0',
+              },
+            ],
+          },
           'm2_interiores': '70.00',
           'm2_exteriores': '12.50',
           'm2_total': '82.50',
@@ -161,6 +222,7 @@ class FakeInventarioPort implements InventarioPort {
           'id': 102,
           'numero_propiedad': '905',
           'numero_piso': '9',
+          // Sin extras a propósito: fija que la unidad pelada no cambia.
           'precio_lista': '2980000.00',
           'm2_total': '75.00',
           'proyecto_id': 7,
@@ -174,7 +236,7 @@ class FakeInventarioPort implements InventarioPort {
         },
       ],
       'total_count': 2,
-      'total_pages': 1,
+      'total_pages': totalPaginas,
       'project_counts': {'Torre Margot': 12},
       'filter_options': {
         'proyectos': ['Torre Margot'],
@@ -213,6 +275,7 @@ class FakeInventarioPort implements InventarioPort {
   @override
   Future<PlanosUnidad> planos(int idUnidad) async {
     _revisar('planos:$idUnidad');
+    if (planosVacios) return PlanosUnidad.fromJson(const {'numero_depa': '03'});
     return PlanosUnidad.fromJson(const {
       'plano_arquitectonico_url': 'https://cdn.sozu.com/arq.png?token=x',
       'plano_ubicacion_url': 'https://cdn.sozu.com/nivel.png?token=x',
@@ -225,7 +288,9 @@ class FakeInventarioPort implements InventarioPort {
             [40, 40],
             [10, 40],
           ],
-          'curves': {'1': [45, 25]},
+          'curves': {
+            '1': [45, 25],
+          },
         },
         {
           'unit_number': '4',

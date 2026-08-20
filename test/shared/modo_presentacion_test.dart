@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sozu_agente_app/features/agente/home/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
 
 /// Modo presentación: el default y la persistencia.
 ///
@@ -67,9 +67,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final modo = contenedor().read(modoPresentacionProvider);
 
-    expect(modo.enmascarar(r'$125,000.50'), ModoPresentacionController.mascara);
+    expect(modo.enmascarar(r'$125,000.50'), ModoPresentacion.mascara);
     expect(modo.enmascararOpcional('ana@sozu.com'),
-        ModoPresentacionController.mascara);
+        ModoPresentacion.mascara);
     // Un campo sin dato se queda sin dato: no hay nada que ocultar.
     expect(modo.enmascararOpcional(null), isNull);
     expect(modo.enmascararOpcional(''), '');

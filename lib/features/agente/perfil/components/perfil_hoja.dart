@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:sozu_agente_app/ui/ui.dart';
 
@@ -94,18 +95,33 @@ class HojaDePerfil extends StatelessWidget {
           Divider(height: 1, color: tone.borderSoft),
           Padding(
             padding: EdgeInsets.all(t.space.md),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                for (var i = 0; i < acciones.length; i++) ...[
-                  if (i > 0) SizedBox(width: t.space.xs),
-                  acciones[i],
-                ],
-              ],
+            // Wrap y no Row: dos etiquetas largas no caben en el ancho de un
+            // teléfono y un `Row` las desborda en vez de bajar la segunda.
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: t.space.xs,
+              runSpacing: t.space.xs,
+              children: acciones,
             ),
           ),
         ],
       ],
     );
   }
+}
+
+/// Fuerza mayúsculas mientras se escribe. Lo usan el CURP y el RFC, que se
+/// guardan en mayúsculas: así el agente ve exactamente lo que se va a mandar.
+class MayusculasAlEscribir extends TextInputFormatter {
+  const MayusculasAlEscribir();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue anterior,
+    TextEditingValue nuevo,
+  ) => TextEditingValue(
+    text: nuevo.text.toUpperCase(),
+    selection: nuevo.selection,
+    composing: TextRange.empty,
+  );
 }

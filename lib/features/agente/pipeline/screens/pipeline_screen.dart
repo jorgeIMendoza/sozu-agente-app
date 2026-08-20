@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/features/agente/pipeline/components/compartir_negocio.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/etapa_badge.dart';
@@ -12,7 +15,8 @@ import 'package:sozu_agente_app/features/agente/pipeline/components/pipeline_enc
 import 'package:sozu_agente_app/features/agente/pipeline/components/pipeline_modal.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/razon_no_avance_dialog.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
-import 'package:sozu_agente_app/features/agente/pipeline/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/modo_presentacion_provider.dart';
+import 'package:sozu_agente_app/shared/providers/shared_providers.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/providers/pipeline_providers.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/services/pipeline_textos.dart';
 import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
@@ -36,6 +40,20 @@ class PipelineScreen extends ConsumerStatefulWidget {
 
 class _PipelineScreenState extends ConsumerState<PipelineScreen> {
   final _buscador = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Misma ruta y mismos identificadores que el portal web: la serie de la
+    // bitácora y del tablero de CTA no se parte entre web y app.
+    final telemetria = ref.read(telemetriaPortProvider);
+    telemetria.registrarVista(_ruta);
+    telemetria.registrarCta(
+      pagina: _pagina,
+      elementoId: 'page_view',
+      tipo: 'page',
+    );
+  }
 
   @override
   void dispose() {
@@ -268,6 +286,7 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
     final total = ref.watch(negociosProvider).length;
     final filtro = ref.watch(etapaFiltroProvider);
     final onboarding = ref.watch(onboardingProvider);
+    final identidad = ref.watch(identidadAgenteProvider);
 
     return PipelineEncabezado(
       resumen: datos.resumen,
@@ -275,15 +294,17 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
       vista: ref.watch(vistaPipelineProvider),
       onVista: (v) => ref.read(vistaPipelineProvider.notifier).state = v,
       modoPresentacion: ref.watch(modoPresentacionProvider).activo,
-      onAlternarPresentacion: () =>
-          ref.read(modoPresentacionProvider).alternar(),
       buscador: _buscador,
       onBuscar: (v) => ref.read(busquedaProspectoProvider.notifier).state = v,
       etapaFiltro: filtro,
       opcionesEtapa: _opcionesEtapa(datos, conteo, total, filtro),
-      onEtapa: (v) => ref.read(etapaFiltroProvider.notifier).state = v,
-      puedeCrear: permisos.generarOferta,
-      capacitacionCompleta: onboarding.capacitacionCompleta,
+      onEtapa: _filtrarEtapa,
+      puedeCrear: permisos.crear,
+      // El candado de capacitación es del aliado externo: al agente interno la
+      // web nunca se lo pone.
+      faltaCapacitacion:
+          identidad?.esAgenteInmobiliario == true &&
+          !onboarding.capacitacionCompleta,
       onNuevaOferta: _nuevaOferta,
       onRefrescar: conRecarga ? () => ref.invalidate(pipelineProvider) : null,
     );
@@ -294,21 +315,20 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
     return PipelineAvisos(
       modoPresentacion: ref.watch(modoPresentacionProvider).activo,
       cerradosSinRazon: ref.watch(cerradosSinRazonProvider).length,
-      onVerCerrados: filtro == _etapaPerdido
-          ? null
-          : () => ref.read(etapaFiltroProvider.notifier).state = _etapaPerdido,
+      onVerCerrados: filtro == _etapaPerdido ? null : _verCerrados,
     );
   }
 
   Widget _vacio(BuildContext context) {
+    final porEtapa = ref.watch(etapaFiltroProvider) != kTodasLasEtapas;
     final filtrando =
-        ref.watch(etapaFiltroProvider) != kTodasLasEtapas ||
-        ref.watch(busquedaProspectoProvider).trim().isNotEmpty;
+        porEtapa || ref.watch(busquedaProspectoProvider).trim().isNotEmpty;
     return SEmptyState.card(
       icon: Icons.inbox_outlined,
-      title: filtrando
-          ? 'Ningún negocio coincide'
-          : 'Todavía no tienes negocios',
+      // Mismos textos que la web; el botón de quitar filtros es de más.
+      title: porEtapa
+          ? 'No hay negocios en esta etapa'
+          : 'No hay negocios que mostrar',
       message: filtrando
           ? 'Prueba con otro prospecto o quita el filtro de etapa.'
           : 'Aquí van a aparecer tus ofertas y apartados de los últimos 30 días.',
@@ -346,14 +366,24 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
   ];
 
   AccionesNegocio _acciones(PipelineAgente datos, PermisosVista permisos) {
-    final puedeRazon =
-        permisos.actualizar && datos.catalogoRazones.disponible;
+    final puedeRazon = permisos.actualizar && datos.catalogoRazones.disponible;
     return AccionesNegocio(
       verDetalle: (n) => _abrirDetalle(n, datos, permisos),
-      compartir: (n) => compartirLinkCliente(
+      compartir: (n) => mostrarCompartirOferta(
         context,
-        url: n.urlCliente,
+        idOferta: n.idOferta,
         titulo: '${n.folio} · ${n.unidad}',
+        urlCliente: n.tieneLinkCliente ? n.urlCliente : '',
+        urlPreview: n.urlPreview,
+        mensaje: mensajeDeOferta(
+          url: n.tieneLinkCliente ? n.urlCliente : n.urlPreview,
+          nombreLead: n.lead.nombre,
+          unidad: n.unidad,
+          proyecto: n.proyectoNombre,
+        ),
+        telefono: n.lead.telefono,
+        clavePais: n.lead.clavePaisTelefono,
+        email: n.lead.email,
       ),
       abrirLink: (n) => abrirLinkCliente(context, n.urlCliente),
       registrarRazon: puedeRazon
@@ -380,10 +410,9 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
       context,
       OfertaDetalleHoja(
         negocio: negocio,
-        etapa: etapaResuelta(
-          {for (final e in datos.etapas) e.clave: e},
-          negocio.etapa,
-        ),
+        etapa: etapaResuelta({
+          for (final e in datos.etapas) e.clave: e,
+        }, negocio.etapa),
         puedeActualizar: permisos.actualizar,
         razonesDisponibles: datos.catalogoRazones.disponible,
       ),
@@ -398,6 +427,18 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
     PipelineAgente datos,
     PermisosVista permisos,
   ) async {
+    unawaited(
+      ref
+          .read(telemetriaPortProvider)
+          .registrarCta(
+            pagina: _pagina,
+            elementoId: 'btn_motivo_no_avance',
+            etiqueta: negocio.razonNoAvance != null
+                ? 'Editar razón'
+                : '¿Por qué no avanzó?',
+            metadata: {'id_oferta': negocio.idOferta},
+          ),
+    );
     final guardada = await mostrarHojaPipeline<bool>(
       context,
       RazonNoAvanceHoja(
@@ -413,16 +454,57 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
   Future<void> _mover(Negocio negocio, EtapaPipeline destino) async {
     try {
       await ref.read(pipelineAccionesProvider).moverEtapa(negocio, destino);
+      unawaited(
+        ref
+            .read(telemetriaPortProvider)
+            .registrarCta(
+              pagina: _pagina,
+              elementoId: 'mover_etapa',
+              metadata: {'negocio': negocio.idNegocio, 'etapa': destino.clave},
+            ),
+      );
       _avisar('Movido a ${destino.nombre}.');
     } catch (e) {
       _avisar(mensajeDeError(e));
     }
   }
 
-  /// El diálogo de nueva oferta lo trae otra tanda (lo construye otro agente):
-  /// el punto de entrada ya queda gateado por permiso y capacitación para que al
-  /// llegar solo haya que cambiar esta línea.
-  void _nuevaOferta() => _avisar('Disponible en la siguiente tanda.');
+  /// Nueva oferta = elegir la unidad. Mismo destino que la web: el inventario
+  /// con los filtros abiertos, que es donde se genera la oferta de verdad.
+  void _nuevaOferta() {
+    ref
+        .read(telemetriaPortProvider)
+        .registrarCta(
+          pagina: _pagina,
+          elementoId: 'btn_nueva_oferta',
+          etiqueta: 'Nueva oferta',
+        );
+    context.push('/inventario/unidades?openFilters=true');
+  }
+
+  /// Filtra por etapa; `clave` es [kTodasLasEtapas] para quitar el filtro.
+  void _filtrarEtapa(String clave) {
+    ref
+        .read(telemetriaPortProvider)
+        .registrarCta(
+          pagina: _pagina,
+          elementoId: 'filtro_etapa',
+          etiqueta: clave,
+        );
+    ref.read(etapaFiltroProvider.notifier).state = clave;
+  }
+
+  /// Salta a los negocios cerrados como perdidos, los que piden razón.
+  void _verCerrados() {
+    ref
+        .read(telemetriaPortProvider)
+        .registrarCta(
+          pagina: _pagina,
+          elementoId: 'btn_ver_expiradas_sin_razon',
+          etiqueta: 'Ver perdidos',
+        );
+    ref.read(etapaFiltroProvider.notifier).state = _etapaPerdido;
+  }
 
   void _avisar(String mensaje) {
     if (!mounted) return;
@@ -434,3 +516,8 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
 
 /// Clave de la etapa de cierre perdido, la que pide razón.
 const String _etapaPerdido = 'perdido';
+
+/// Ruta e identificador de página de la telemetría. Son los de la web: si
+/// difieren, el mismo botón cuenta dos veces en el tablero de CTA.
+const String _ruta = '/admin/agent/pipeline';
+const String _pagina = 'agent_pipeline';

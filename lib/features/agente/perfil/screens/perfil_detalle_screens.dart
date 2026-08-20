@@ -8,6 +8,7 @@ import 'package:sozu_agente_app/features/agente/perfil/components/cuenta_de_disp
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_aviso.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_bloque_datos.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_cuenta_bancaria.dart';
+import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_fiscal.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_hoja_identidad.dart';
 import 'package:sozu_agente_app/features/agente/perfil/components/perfil_subvista.dart';
 import 'package:sozu_agente_app/features/agente/perfil/ports/perfil_agente_port.dart';
@@ -45,6 +46,7 @@ class PerfilPersonalScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Identidad',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         asyncPerfil.when(
           loading: () => const PerfilSubvistaCargando(),
@@ -167,11 +169,7 @@ class _Faltantes extends StatelessWidget {
             runSpacing: t.space.xs,
             children: [
               for (final f in faltantes)
-                SBadge(
-                  label: f,
-                  tone: SBadgeTone.pending,
-                  size: SBadgeSize.sm,
-                ),
+                SBadge(label: f, tone: SBadgeTone.pending, size: SBadgeSize.sm),
             ],
           ),
         ],
@@ -184,12 +182,10 @@ class _Faltantes extends StatelessWidget {
 
 /// Información fiscal del agente.
 ///
-/// ⚠️ El único campo editable es el **uso del CFDI**. El RFC, el régimen y el
-/// domicilio fiscal NO tienen acción de escritura en el backend: solo se
-/// escriben al entregar la Constancia de Situación Fiscal, con los datos que el
-/// agente confirma de ese documento (ver [PerfilAgentePort]). Por eso esta
-/// pantalla no ofrece un formulario fiscal: manda a Documentos, que es el camino
-/// que sí existe.
+/// Se cierra por dos caminos que no compiten: el capturador
+/// ([mostrarHojaDeFiscal], que escribe con `guardar_fiscal`) y la Constancia,
+/// que el servidor lee y de la que extrae los mismos datos. El agente
+/// dependiente no ve ninguno de los dos: esos datos los lleva su inmobiliaria.
 class PerfilFiscalScreen extends ConsumerStatefulWidget {
   const PerfilFiscalScreen({super.key});
 
@@ -229,6 +225,7 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
 
     return PerfilSubvista(
       titulo: 'Información fiscal',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       children: [
         if (nota != null) ...[
           PerfilAvisoSoloLectura.una(
@@ -250,6 +247,25 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
             final puedeEditarCfdi =
                 permisos.actualizar && !soloLectura && perfil.puedeEditar;
             final constancia = perfil.expediente.documento('csf');
+
+            Future<void> editarFiscal() async {
+              final guardo = await mostrarHojaDeFiscal(
+                context,
+                fiscal: f,
+                catalogos: perfil.catalogos,
+                domicilioParticular: perfil.identidad.domicilio,
+              );
+              if (guardo != true) return;
+              // El avance vive en DOS lados: el perfil y el onboarding de la
+              // sesión, que es el que decide si ya puede ver sus comisiones.
+              // Sin los dos, el agente cierra su paso fiscal y el aviso sigue
+              // diciéndole que le falta.
+              ref.invalidate(perfilAgenteProvider);
+              ref.invalidate(sesionProvider);
+              if (context.mounted) {
+                _aviso(context, 'Información fiscal actualizada');
+              }
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -292,6 +308,19 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
                 SizedBox(height: t.space.md),
                 PerfilBloqueDatos(
                   titulo: 'Información fiscal',
+                  // Oculto (no deshabilitado) cuando la lleva la inmobiliaria:
+                  // el backend responde `forbidden_field` y ofrecer el botón
+                  // solo lleva al agente a un error que no puede resolver.
+                  accion: puedeEditarCfdi
+                      ? SButton(
+                          label: 'Editar',
+                          icon: Icons.edit_outlined,
+                          onPressed: editarFiscal,
+                          variant: SButtonVariant.ghost,
+                          size: SButtonSize.sm,
+                          fullWidth: false,
+                        )
+                      : null,
                   filas: [
                     PerfilDato(
                       etiqueta: 'Razón social / Nombre',
@@ -338,7 +367,7 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
                             SizedBox(width: t.space.xs),
                             Expanded(
                               child: Text(
-                                'Tus datos fiscales salen de tu Constancia',
+                                'Tu Constancia respalda estos datos',
                                 style: t.text.bodySmall.copyWith(
                                   fontWeight: FontWeight.w700,
                                   color: t.color.fg,
@@ -348,7 +377,8 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
                             if (constancia != null)
                               SBadge(
                                 label: constancia.estado.etiqueta,
-                                tone: constancia.estado ==
+                                tone:
+                                    constancia.estado ==
                                         EstadoDocumento.validado
                                     ? SBadgeTone.positive
                                     : SBadgeTone.pending,
@@ -358,11 +388,11 @@ class _PerfilFiscalScreenState extends ConsumerState<PerfilFiscalScreen> {
                         ),
                         SizedBox(height: t.space.xs),
                         Text(
-                          'El RFC, el régimen y tu domicilio fiscal se '
-                          'registran al entregar tu Constancia de Situación '
-                          'Fiscal, con los datos que confirmas de ese '
-                          'documento. Así lo que facturas siempre coincide con '
-                          'lo que tiene el SAT.',
+                          'Al entregar el PDF original del SAT lo leemos por '
+                          'ti: si está vigente, tu Constancia queda validada y '
+                          'de ahí salen tu RFC, tu régimen y tu domicilio '
+                          'fiscal. Así lo que facturas coincide con lo que '
+                          'tiene el SAT.',
                           style: t.text.caption.copyWith(
                             color: t.color.fgMuted,
                             height: 1.5,
@@ -404,9 +434,8 @@ class PerfilCuentasScreen extends ConsumerWidget {
     final identidad = ref.watch(identidadAgenteProvider);
     final perfil = asyncPerfil.valueOrNull;
 
-    final puedeEditar = nota == null &&
-        permisos.actualizar &&
-        (perfil?.puedeEditar ?? false);
+    final puedeEditar =
+        nota == null && permisos.actualizar && (perfil?.puedeEditar ?? false);
 
     Future<void> alta() async {
       final guardo = await mostrarHojaDeCuentaBancaria(
@@ -453,7 +482,9 @@ class PerfilCuentasScreen extends ConsumerWidget {
       );
       if (ok != true) return;
       try {
-        await ref.read(perfilAgentePortProvider).borrarCuentaBancaria(cuenta.id);
+        await ref
+            .read(perfilAgentePortProvider)
+            .borrarCuentaBancaria(cuenta.id);
         ref.invalidate(perfilAgenteProvider);
         if (context.mounted) _aviso(context, 'Cuenta bancaria eliminada.');
       } on ApiError catch (e) {
@@ -467,6 +498,7 @@ class PerfilCuentasScreen extends ConsumerWidget {
 
     return PerfilSubvista(
       titulo: 'Cuenta bancaria',
+      onRefrescar: () => refrescarPerfilDelAgente(ref),
       accion: puedeEditar
           ? SButton(
               label: 'Agregar',

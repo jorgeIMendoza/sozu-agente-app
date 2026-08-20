@@ -32,11 +32,18 @@ class TotalesCartera {
       '$conCompra con compra';
 }
 
+/// Valor de [filtrarProspectos] que selecciona los leads SIN desarrollo. Los
+/// ids de proyecto son positivos, así que un negativo no choca con ninguno.
+const int idSinDesarrollo = -1;
+
 /// Filtra la cartera por texto libre, estado del lead y desarrollo.
 ///
 /// El texto busca en nombre, correo, teléfono y nombre de desarrollo; los otros
 /// dos aciertan si CUALQUIERA de sus desarrollos cumple, porque el filtro es
 /// sobre la persona y el estado vive en la relación persona × desarrollo.
+///
+/// [idDesarrollo] con [idSinDesarrollo] deja solo los leads que no cuelgan de
+/// ningún proyecto.
 List<Prospecto> filtrarProspectos(
   List<Prospecto> prospectos, {
   String busqueda = '',
@@ -58,9 +65,11 @@ List<Prospecto> filtrarProspectos(
             !p.desarrollos.any((d) => d.idEstadoLead == idEstadoLead)) {
           return false;
         }
-        if (idDesarrollo != null &&
-            !p.desarrollos.any((d) => d.idDesarrollo == idDesarrollo)) {
-          return false;
+        if (idDesarrollo != null) {
+          final coincide = idDesarrollo == idSinDesarrollo
+              ? p.desarrollos.any((d) => d.idDesarrollo == null)
+              : p.desarrollos.any((d) => d.idDesarrollo == idDesarrollo);
+          if (!coincide) return false;
         }
         return true;
       })
@@ -70,13 +79,17 @@ List<Prospecto> filtrarProspectos(
 /// Desarrollos presentes en la cartera, para el filtro de la barra. Se arma con
 /// lo que hay en las filas: ofrecer desarrollos sin prospectos solo produce
 /// listas vacías.
+///
+/// Un interés sin proyecto entra bajo [idSinDesarrollo]: descartarlo dejaba
+/// leads imposibles de filtrar.
 List<({int id, String nombre})> desarrollosDeLaCartera(
   List<Prospecto> prospectos,
 ) {
   final porId = <int, String>{};
   for (final p in prospectos) {
     for (final d in p.desarrollos) {
-      if (d.idDesarrollo != null) porId[d.idDesarrollo!] = d.desarrollo;
+      final id = d.idDesarrollo ?? idSinDesarrollo;
+      porId[id] = d.desarrollo.isEmpty ? 'Sin desarrollo' : d.desarrollo;
     }
   }
   final lista = porId.entries.map((e) => (id: e.key, nombre: e.value)).toList();
@@ -151,6 +164,62 @@ String? errorCurp(String valor) {
   if (v.isEmpty) return null;
   return _reCurp.hasMatch(v) ? null : 'Formato inválido (18 caracteres)';
 }
+
+// ── Duplicados en el alta ────────────────────────────────────────────────────
+
+/// Últimos 10 dígitos del teléfono, ignorando espacios, guiones y lada; vacío
+/// cuando no llega a 10. Mismo corte que el servidor y que el portal web.
+String ultimos10(String? telefono) {
+  final d = (telefono ?? '').replaceAll(RegExp(r'\D'), '');
+  return d.length >= 10 ? d.substring(d.length - 10) : '';
+}
+
+/// ¿Hay con qué buscar duplicados? Correo con formato válido o teléfono con 10
+/// dígitos útiles. Sin eso el servidor devuelve vacío, así que no se le pregunta.
+bool hayCriterioDeDuplicados({String email = '', String telefono = ''}) =>
+    errorEmail(email) == null || ultimos10(telefono).isNotEmpty;
+
+/// El motivo de la coincidencia en palabras, para la tarjeta de aviso.
+String motivoEnPalabras(MotivoCoincidencia motivo) => switch (motivo) {
+  MotivoCoincidencia.correo => 'coincide el correo',
+  MotivoCoincidencia.telefono => 'coincide el teléfono',
+  MotivoCoincidencia.correoYTelefono => 'coinciden el correo y el teléfono',
+};
+
+/// Qué es de esa persona, en una línea: si ya es tuya, de quién es o si no se
+/// puede saber. Espejo de `describirCoincidencia` del portal web.
+String describirCoincidencia(ProspectoCoincidencia c) {
+  if (!c.sinLeads && c.leads.isNotEmpty) {
+    if (c.leads.every((l) => l.esMio)) {
+      final propios = c.leads.map((l) => l.desarrollo).join(', ');
+      return 'Ya es tu prospecto en $propios.';
+    }
+    // `dueno` puede venir vacío a propósito: del dueño ajeno solo viaja su
+    // nombre, y sin él se dice "otro asesor" en vez de dejar el renglón cojo.
+    final ajenos = c.leads
+        .where((l) => !l.esMio)
+        .map((l) => '${l.desarrollo} · ${l.dueno ?? 'otro asesor'}')
+        .join(' · ');
+    return 'Ya está registrado y tiene dueño: $ajenos.';
+  }
+  if (c.esCliente) return 'Esta persona ya es cliente de SOZU.';
+  return 'Ya está registrada y no aparece en tu cartera: lo más probable es '
+      'que la trabaje otro asesor. Confírmalo antes de darla de alta otra vez.';
+}
+
+/// Encabezado de la tarjeta de aviso, con el conteo en singular o plural.
+String encabezadoDeDuplicados(int cuantos) => cuantos == 1
+    ? 'Ya existe un registro con este correo o teléfono'
+    : 'Ya existen $cuantos registros con este correo o teléfono';
+
+/// Cierre de la tarjeta de aviso: qué hacer si es la misma persona.
+const String cierreDeDuplicados =
+    'Si es la misma persona, pide el traspaso en vez de darla de alta otra vez.';
+
+/// Nota discreta cuando el servidor no pudo verificar duplicados.
+const String duplicadosNoDisponibles =
+    'No pudimos verificar si ya está registrado. Puedes guardar, pero revísalo '
+    'antes para no duplicarlo.';
 
 // ── Códigos del servidor ─────────────────────────────────────────────────────
 

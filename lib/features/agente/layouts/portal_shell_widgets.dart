@@ -6,10 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:sozu_agente_app/core/portal_theme.dart';
-import 'package:sozu_agente_app/data/models.dart';
 import 'package:sozu_agente_app/features/app_download/components/app_download.dart';
 import 'package:sozu_agente_app/features/auth/providers/auth_provider.dart';
-import 'package:sozu_agente_app/features/agente/perfil/providers/profile_providers.dart';
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
 import 'package:sozu_agente_app/features/agente/providers/agente_providers.dart';
 import 'package:sozu_agente_app/features/admin/providers/impersonation_provider.dart';
 
@@ -279,8 +278,11 @@ class _SearchResultRowState extends State<_SearchResultRow> {
 // Popover del avatar
 // ---------------------------------------------------------------------------
 
-/// Avatar de la topbar con popover: nombre, rol, teléfono ([profileProvider]),
-/// "Ver perfil" y "Cerrar sesión".
+/// Avatar de la topbar con popover: nombre, rol, "Ver perfil" y "Cerrar sesión".
+///
+/// Nombre y rol salen de `sesionProvider`, que ya los trae y los trae del agente
+/// EFECTIVO: cuando un admin impersona, el encabezado muestra a quién se está
+/// revisando y no al admin.
 class PortalTopBarAvatarMenu extends ConsumerStatefulWidget {
   const PortalTopBarAvatarMenu({super.key});
 
@@ -324,20 +326,17 @@ class _PortalTopBarAvatarMenuState
     if (mounted) context.go('/login');
   }
 
-  String _telefono(ClientePerfil? perfil) {
-    if (perfil == null) return '';
-    final tel = (perfil.telefono ?? '').trim();
-    if (tel.isEmpty) return '';
-    final clave = (perfil.clavePaisTelefono ?? '').trim();
-    return clave.isEmpty ? tel : '$clave $tel';
+  /// Nombre del agente efectivo; cae al del usuario logueado mientras la sesión
+  /// del portal no resuelve.
+  String _nombre() {
+    final header = ref.watch(sesionProvider).valueOrNull?.header.nombre?.trim();
+    if (header != null && header.isNotEmpty) return header;
+    final auth = ref.watch(authProvider);
+    return auth.profile?.displayName ?? auth.profile?.email ?? 'Usuario';
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authProvider);
-    final nombre =
-        auth.profile?.displayName ?? auth.profile?.email ?? 'Usuario';
-
     return OverlayPortal(
       controller: _overlay,
       overlayChildBuilder: _buildPopover,
@@ -346,18 +345,18 @@ class _PortalTopBarAvatarMenuState
         child: InkWell(
           onTap: _overlay.toggle,
           borderRadius: BorderRadius.circular(999),
-          child: PortalAvatarCircle(nombre: nombre, size: 32),
+          child: PortalAvatarCircle(nombre: _nombre(), size: 32),
         ),
       ),
     );
   }
 
   Widget _buildPopover(BuildContext context) {
-    final auth = ref.watch(authProvider);
-    final nombre =
-        auth.profile?.displayName ?? auth.profile?.email ?? 'Usuario';
-    final rol = auth.profile?.roleName ?? 'Agente';
-    final telefono = _telefono(ref.watch(profileProvider).valueOrNull);
+    final nombre = _nombre();
+    final rol =
+        ref.watch(sesionProvider).valueOrNull?.header.rol ??
+        ref.watch(authProvider).profile?.roleName ??
+        'Agente';
 
     return Stack(
       children: [
@@ -434,29 +433,6 @@ class _PortalTopBarAvatarMenuState
                                     color: PortalColors.mutedForeground,
                                   ),
                                 ),
-                                if (telefono.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.phone_outlined,
-                                        size: 12,
-                                        color: PortalColors.mutedForeground,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          telefono,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: PortalColors.mutedForeground,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ],
                             ),
                           ),

@@ -73,8 +73,40 @@ void main() {
     final nota = ficha.actividad.first;
     expect(nota.esNotaPropia, isTrue);
     expect(nota.adjuntos.single.nombre, 'plano.pdf');
+    // El contenido con formato tiene que llegar: sin él, editar desde el app
+    // reescribiría la nota como texto plano y el formato se perdería.
+    expect(nota.html, contains('<strong>24 meses</strong>'));
     expect(ficha.actividad.last.esNotaPropia, isFalse);
+    expect(ficha.actividad.last.html, isEmpty);
     expect(port.log, ['detalle:11']);
+  });
+
+  test('una nota con imagen o texto largo ofrece "Ver detalle"', () {
+    const corta = ActividadProspecto(
+      tipo: TipoActividad.nota,
+      titulo: 'Nota',
+      idNota: 1,
+      detalle: 'Llamar el lunes',
+      html: '<p>Llamar el lunes</p>',
+    );
+    expect(corta.notaLarga, isFalse);
+
+    final larga = ActividadProspecto(
+      tipo: TipoActividad.nota,
+      titulo: 'Nota',
+      idNota: 2,
+      detalle: 'x' * 141,
+    );
+    expect(larga.notaLarga, isTrue);
+
+    const conImagen = ActividadProspecto(
+      tipo: TipoActividad.nota,
+      titulo: 'Nota',
+      idNota: 3,
+      detalle: 'Foto',
+      html: '<p><IMG src="https://x/a.png" /></p>',
+    );
+    expect(conImagen.notaLarga, isTrue);
   });
 
   test('un fallo del puerto sale como ApiError por el provider', () async {
