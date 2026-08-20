@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sozu_agente_app/features/agente/sesion/providers/sesion_providers.dart';
+import 'package:sozu_agente_app/features/agente/sesion/ports/sesion_port.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/adapters/pipeline_adapter.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/nueva_oferta_hoja.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
@@ -55,6 +57,31 @@ final _cartera = CarteraProspectos(
 /// app (nunca la identidad del agente ni montos), qué se le dice al agente
 /// cuando el servidor lo rechaza, y sobre todo que la app degrade sola mientras
 /// `crear_oferta` no esté desplegada.
+/// El permiso de oferta digital vive en la vista de INVENTARIO, que es desde
+/// donde se configura la oferta. Sin el, la hoja no ofrece el link del cliente.
+const _sesionSinDigital = SesionAgente(
+  identidad: IdentidadAgente(email: 'agente@sozu.com'),
+  permisos: {
+    VistaAgente.inventario: PermisosVista(
+      leer: true,
+      crear: true,
+      generarOferta: true,
+    ),
+  },
+);
+
+const _sesionConDigital = SesionAgente(
+  identidad: IdentidadAgente(email: 'agente@sozu.com'),
+  permisos: {
+    VistaAgente.inventario: PermisosVista(
+      leer: true,
+      crear: true,
+      generarOferta: true,
+      generarOfertaDigital: true,
+    ),
+  },
+);
+
 void main() {
   group('cuerpo que sale a agente-pipeline', () {
     test('con prospecto de la cartera no viaja identidad ni montos', () async {
@@ -375,6 +402,7 @@ void main() {
       WidgetTester tester,
       FakePipelinePort port, {
       VoidCallback? onAgendar,
+      SesionAgente? sesion,
     }) async {
       tester.view.devicePixelRatio = 1.0;
       tester.view.physicalSize = const Size(420, 2400);
@@ -386,6 +414,9 @@ void main() {
             overrides: [
               pipelinePortProvider.overrideWithValue(port),
               carteraProspectosProvider.overrideWith((ref) async => _cartera),
+              sesionProvider.overrideWith(
+                (ref) async => sesion ?? _sesionConDigital,
+              ),
             ],
           ),
           child: MaterialApp(
@@ -521,6 +552,23 @@ void main() {
       expect(find.text('WhatsApp'), findsOneWidget);
       expect(find.text('Copiar el link del cliente'), findsOneWidget);
     });
+
+    testWidgets(
+      'sin permiso de oferta digital NO se ofrece el link ni el correo',
+      (tester) async {
+        // `generar_oferta_digital` llega en la sesion y por omision es falso,
+        // igual que en la web. Antes se parseaba y no lo leia nadie, asi que la
+        // app prometia una oferta digital a quien no la tiene otorgada.
+        final port = FakePipelinePort();
+        await abrirHoja(tester, port, sesion: _sesionSinDigital);
+
+        expect(find.text('Generar el link para el cliente'), findsNothing);
+        expect(find.text('Mandárselo por correo'), findsNothing);
+        // La oferta se sigue pudiendo crear: lo que se quita es el canal
+        // digital, no la cotizacion.
+        expect(find.text('Generar la oferta'), findsOneWidget);
+      },
+    );
 
     testWidgets('los avisos del servidor se pintan tal cual', (tester) async {
       final port = FakePipelinePort()

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:sozu_agente_app/features/agente/layouts/portal_top_bar.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/compartir_negocio.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/etapa_badge.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/negocio_acciones.dart';
@@ -74,6 +75,9 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
     // resuelva para no acusar falta de permiso mientras carga.
     if (sesionResuelta && !permisos.leer) {
       return Scaffold(
+        // Sin esto, en movil la pantalla queda sin interruptor de modo
+        // presentacion y sin campana: el del shell solo se pinta en escritorio.
+        appBar: const PortalTopBar(vista: VistaAgente.pipeline),
         backgroundColor: Colors.transparent,
         body: SafeArea(
           child: _marco(
@@ -91,6 +95,7 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
     }
 
     return Scaffold(
+      appBar: const PortalTopBar(vista: VistaAgente.pipeline),
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: pipeline.when(
