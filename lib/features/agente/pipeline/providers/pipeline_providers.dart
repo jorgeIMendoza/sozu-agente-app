@@ -176,7 +176,10 @@ class PipelineAcciones {
   }
 
   /// Emite el link del cliente de una oferta que todavía no lo tiene.
-  Future<LinkCliente> generarLink({required int idOferta, String? email}) async {
+  Future<LinkCliente> generarLink({
+    required int idOferta,
+    String? email,
+  }) async {
     final link = await _port.generarLinkCliente(
       idOferta: idOferta,
       email: email,
@@ -185,6 +188,22 @@ class PipelineAcciones {
     _ref.invalidate(pipelineProvider);
     return link;
   }
+
+  /// Envía la oferta por correo desde la plataforma. No invalida nada: el
+  /// envío no cambia el negocio ni su detalle.
+  Future<EnvioCorreoOferta> enviarPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  }) => _port.enviarOfertaPorCorreo(
+    idOferta: idOferta,
+    email: email,
+    adjuntarPdf: adjuntarPdf,
+  );
+
+  /// Pide el PDF de la oferta. El enlace que devuelve caduca al minuto, así que
+  /// quien lo reciba tiene que consumirlo enseguida.
+  Future<PdfOferta> pdfDeOferta(int idOferta) => _port.pdfDeOferta(idOferta);
 
   void _fijarOptimista(int idOferta, String clave) {
     final estado = _ref.read(etapasOptimistasProvider.notifier);

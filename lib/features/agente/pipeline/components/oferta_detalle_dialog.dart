@@ -442,6 +442,7 @@ class _OfertaDetalleHojaState extends ConsumerState<OfertaDetalleHoja> {
   /// Abre los canales de compartir con el mensaje ya armado.
   Future<void> _compartir(OfertaDetalle d) => mostrarCompartirOferta(
     context,
+    idOferta: _negocio.idOferta,
     titulo: '${_negocio.folio} · ${_negocio.unidad}',
     urlCliente: d.link.vigente ? d.link.url! : '',
     urlPreview: d.link.urlPreview,

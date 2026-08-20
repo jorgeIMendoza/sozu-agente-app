@@ -334,11 +334,7 @@ class PropiedadOferta {
   final String numero;
   final double? precioLista;
 
-  const PropiedadOferta({
-    required this.id,
-    this.numero = '',
-    this.precioLista,
-  });
+  const PropiedadOferta({required this.id, this.numero = '', this.precioLista});
 
   factory PropiedadOferta.fromJson(Map<String, dynamic> j) => PropiedadOferta(
     id: intDe(j['id']) ?? 0,
@@ -515,6 +511,58 @@ class CambioEsquema {
   );
 }
 
+/// PDF de la oferta ya generado en el servidor.
+///
+/// [url] es EFÍMERA: el backend borra el archivo del bucket al minuto, así que
+/// hay que abrirla o descargarla en el acto. Guardarla o reusarla da un 404.
+class PdfOferta {
+  final String url;
+
+  /// Nombre con el que se debe guardar el archivo.
+  final String nombreArchivo;
+
+  /// Vida del enlace en segundos, tal como la reporta el servidor.
+  final int expiraEnSegundos;
+
+  const PdfOferta({
+    required this.url,
+    this.nombreArchivo = 'oferta.pdf',
+    this.expiraEnSegundos = 60,
+  });
+
+  factory PdfOferta.fromJson(Map<String, dynamic> j) => PdfOferta(
+    url: (j['url'] as String?) ?? '',
+    nombreArchivo: (j['nombre_archivo'] as String?)?.trim().isNotEmpty == true
+        ? j['nombre_archivo'] as String
+        : 'oferta.pdf',
+    expiraEnSegundos: intDe(j['expira_en_segundos']) ?? 60,
+  );
+}
+
+/// Resultado del envío de la oferta por correo desde la plataforma.
+class EnvioCorreoOferta {
+  final bool enviado;
+
+  /// Destinatario al que se envió, como lo tomó el servidor.
+  final String email;
+
+  /// El correo salió con el PDF adjunto.
+  final bool conPdf;
+
+  const EnvioCorreoOferta({
+    this.enviado = false,
+    this.email = '',
+    this.conPdf = false,
+  });
+
+  factory EnvioCorreoOferta.fromJson(Map<String, dynamic> j) =>
+      EnvioCorreoOferta(
+        enviado: j['enviado'] == true,
+        email: (j['email'] as String?) ?? '',
+        conPdf: j['con_pdf'] == true,
+      );
+}
+
 /// La acción no se puede intentar: la bloquea el estado del negocio, no el
 /// servidor. Se resuelve en el app para no mandar una llamada que va a fallar.
 class AccionNoDisponible implements Exception {
@@ -539,10 +587,7 @@ abstract interface class PipelinePort {
 
   /// Mueve un negocio a una etapa manual. Falla con `stage_not_manual` en las
   /// automáticas y con `pipeline_unavailable` si el ambiente no tiene pipeline.
-  Future<void> moverEtapa({
-    required int idNegocio,
-    required String claveEtapa,
-  });
+  Future<void> moverEtapa({required int idNegocio, required String claveEtapa});
 
   /// Registra (o corrige) la razón por la que un negocio cerrado no avanzó.
   Future<RazonNoAvance> registrarRazonNoAvance({
@@ -563,4 +608,17 @@ abstract interface class PipelinePort {
     required int idOferta,
     String? email,
   });
+
+  /// Envía la oferta al prospecto por correo DESDE la plataforma (no abre el
+  /// cliente de correo del dispositivo). Falla con `email_invalido` si [email]
+  /// no trae `@` y con `email_failed` si el envío se cae.
+  Future<EnvioCorreoOferta> enviarOfertaPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  });
+
+  /// Genera el PDF de la oferta y devuelve su enlace efímero.
+  /// Hay que consumirlo en el acto: ver [PdfOferta.url].
+  Future<PdfOferta> pdfDeOferta(int idOferta);
 }

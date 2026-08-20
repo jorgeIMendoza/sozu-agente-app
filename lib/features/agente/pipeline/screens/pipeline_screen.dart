@@ -371,6 +371,7 @@ class _PipelineScreenState extends ConsumerState<PipelineScreen> {
       verDetalle: (n) => _abrirDetalle(n, datos, permisos),
       compartir: (n) => mostrarCompartirOferta(
         context,
+        idOferta: n.idOferta,
         titulo: '${n.folio} · ${n.unidad}',
         urlCliente: n.tieneLinkCliente ? n.urlCliente : '',
         urlPreview: n.urlPreview,

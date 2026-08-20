@@ -74,6 +74,19 @@ String mensajeDeError(Object error) {
             'el catálogo.',
       'scheme_mismatch' =>
         'El plan elegido no corresponde a esta oferta. Elige otro.',
+      'email_invalido' =>
+        'Ese correo no es válido: revisa que esté completo y vuelve a '
+            'enviarlo.',
+      'email_failed' =>
+        'El correo no salió. Intenta de nuevo o mándale el link por WhatsApp.',
+      'pdf_failed' =>
+        'No se pudo generar el PDF de la oferta. Intenta de nuevo; si vuelve a '
+            'fallar, comparte el link del cliente.',
+      'server_misconfigured' =>
+        'Falta configuración en el servidor para esta acción. Avísale al '
+            'administrador.',
+      'missing_id' =>
+        'No pudimos identificar la oferta. Cierra la hoja y vuelve a abrirla.',
       'missing_email' =>
         'El prospecto no tiene correo registrado, y el link del cliente se '
             'emite a un correo. Captúralo en Prospectos.',

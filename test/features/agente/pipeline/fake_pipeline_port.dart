@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sozu_agente_app/features/agente/pipeline/ports/pipeline_port.dart';
 import 'package:sozu_agente_app/shared/api_error.dart';
 
@@ -14,11 +16,26 @@ class FakePipelinePort implements PipelinePort {
   /// El catálogo de razones está habilitado en el ambiente.
   bool catalogoDisponible = true;
 
+  /// Cuelga la PRÓXIMA operación asíncrona hasta que la prueba la complete.
+  /// Es lo que permite observar el estado de carga de la UI; se consume al
+  /// usarse, igual que [proximoFallo].
+  Completer<void>? compuerta;
+
   void _fallarSiToca(String metodo) {
     log.add(metodo);
     final f = proximoFallo;
     proximoFallo = null;
     if (f != null) throw f;
+  }
+
+  /// Variante de [_fallarSiToca] que primero espera a [compuerta].
+  Future<void> _colgarSiToca(String metodo) async {
+    final c = compuerta;
+    if (c != null) {
+      compuerta = null;
+      await c.future;
+    }
+    _fallarSiToca(metodo);
   }
 
   static Map<String, dynamic> _negocio({
@@ -127,12 +144,7 @@ class FakePipelinePort implements PipelinePort {
         'precio_lista': 1000000,
       },
       'asociados': [
-        {
-          'tipo': 'bodega',
-          'nombre': 'B-12',
-          'es_incluido': true,
-          'precio': 0,
-        },
+        {'tipo': 'bodega', 'nombre': 'B-12', 'es_incluido': true, 'precio': 0},
         {
           'tipo': 'estacionamiento',
           'nombre': 'E-3',
@@ -210,6 +222,34 @@ class FakePipelinePort implements PipelinePort {
       token: 'tok-nuevo',
       url: 'https://admin.sozu.com/oferta/O-000001/tok-nuevo',
       urlPreview: 'https://admin.sozu.com/oferta/O-000001',
+    );
+  }
+
+  /// Valor de `adjuntarPdf` con el que llegó el último envío por correo. Es lo
+  /// que fija que la casilla de la hoja viaje como booleano y no como texto.
+  bool? ultimoAdjuntarPdf;
+
+  /// Destinatario del último envío por correo, ya recortado por la hoja.
+  String? ultimoDestinatario;
+
+  @override
+  Future<EnvioCorreoOferta> enviarOfertaPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  }) async {
+    ultimoAdjuntarPdf = adjuntarPdf;
+    ultimoDestinatario = email;
+    await _colgarSiToca('enviarOfertaPorCorreo:$idOferta');
+    return EnvioCorreoOferta(enviado: true, email: email, conPdf: adjuntarPdf);
+  }
+
+  @override
+  Future<PdfOferta> pdfDeOferta(int idOferta) async {
+    await _colgarSiToca('pdfDeOferta:$idOferta');
+    return PdfOferta(
+      url: 'https://cdn.sozu.com/ofertas_temp/O_$idOferta.pdf',
+      nombreArchivo: 'O_$idOferta.pdf',
     );
   }
 }

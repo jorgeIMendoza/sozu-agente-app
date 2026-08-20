@@ -14,6 +14,10 @@ class PipelineAdapter implements PipelinePort {
   PipelineAdapter({this.impersonate})
     : _fn = EdgeFunctions(impersonate: impersonate);
 
+  /// Constructor con el llamador ya armado. Existe para las pruebas: es lo que
+  /// permite fijar el CUERPO que sale a la function sin levantar backend.
+  PipelineAdapter.conLlamador(this._fn) : impersonate = null;
+
   static const _fnNombre = 'agente-pipeline';
 
   /// `YYYY-MM-DD`: es el formato que espera el filtro de fecha del servidor.
@@ -107,4 +111,43 @@ class PipelineAdapter implements PipelinePort {
     );
     return LinkCliente.fromJson(mapaDe(res['link_digital']));
   }
+
+  @override
+  Future<EnvioCorreoOferta> enviarOfertaPorCorreo({
+    required int idOferta,
+    required String email,
+    bool adjuntarPdf = false,
+  }) async => EnvioCorreoOferta.fromJson(
+    await _fn.call(
+      _fnNombre,
+      body: cuerpoEnviarCorreo(
+        idOferta: idOferta,
+        email: email,
+        adjuntarPdf: adjuntarPdf,
+      ),
+    ),
+  );
+
+  /// Cuerpo de `enviar_oferta_email`.
+  ///
+  /// `adjuntar_pdf` va como booleano DESNUDO: el servidor compara con `=== true`
+  /// y cualquier otra forma ("true", 1) se lee como "sin adjunto" en silencio.
+  static Map<String, dynamic> cuerpoEnviarCorreo({
+    required int idOferta,
+    required String email,
+    required bool adjuntarPdf,
+  }) => {
+    'action': 'enviar_oferta_email',
+    'id_oferta': idOferta,
+    'email': email.trim(),
+    'adjuntar_pdf': adjuntarPdf,
+  };
+
+  @override
+  Future<PdfOferta> pdfDeOferta(int idOferta) async => PdfOferta.fromJson(
+    await _fn.call(
+      _fnNombre,
+      body: {'action': 'pdf_oferta', 'id_oferta': idOferta},
+    ),
+  );
 }

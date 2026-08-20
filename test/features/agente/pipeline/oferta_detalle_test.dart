@@ -175,9 +175,11 @@ void main() {
     expect(find.text('WhatsApp'), findsOneWidget);
     expect(find.text('Copiar el link del cliente'), findsOneWidget);
     expect(find.text('Copiar el link de vista previa'), findsOneWidget);
-    // Correo y PDF no están en el app y la hoja lo dice, en vez de dejar un
-    // botón que no hace nada.
-    expect(find.textContaining('desde el portal web'), findsOneWidget);
+    // El correo desde la plataforma y el PDF ya viven aquí: la hoja no puede
+    // seguir mandando al agente al portal web.
+    expect(find.text('Enviar desde la plataforma'), findsOneWidget);
+    expect(find.text('Descargar el PDF de la oferta'), findsOneWidget);
+    expect(find.textContaining('desde el portal web'), findsNothing);
   });
 
   group('armado del mensaje y de la lada', () {

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:sozu_agente_app/core/file_download.dart';
 import 'package:sozu_agente_app/features/agente/pipeline/components/pipeline_modal.dart';
+import 'package:sozu_agente_app/features/agente/pipeline/providers/pipeline_providers.dart';
+import 'package:sozu_agente_app/features/agente/pipeline/services/pipeline_textos.dart';
 import 'package:sozu_agente_app/ui/ui.dart';
 import 'package:sozu_agente_app/widgets/whatsapp_icon.dart';
 
@@ -34,13 +38,14 @@ String ladaDeClavePais(String? clave) {
   return _ladaPorIso[t.toUpperCase()] ?? '52';
 }
 
-/// Canales de compartir que el app puede abrir hoy.
+/// Canales de compartir la oferta, los cuatro del portal web: WhatsApp, correo
+/// enviado DESDE la plataforma, copiar el link y descargar el PDF.
 ///
-/// El correo con el PDF adjunto y la descarga del PDF NO están: los arma el
-/// portal web con su generador. El pie de la hoja lo dice, para que el agente no
-/// los busque aquí.
+/// [idOferta] es lo que habilita los dos canales que necesitan servidor
+/// (`enviar_oferta_email` y `pdf_oferta`); los de link puro no lo usan.
 Future<void> mostrarCompartirOferta(
   BuildContext context, {
+  required int idOferta,
   required String titulo,
   required String urlCliente,
   required String urlPreview,
@@ -52,6 +57,7 @@ Future<void> mostrarCompartirOferta(
   return mostrarHojaPipeline<void>(
     context,
     _CompartirOfertaHoja(
+      idOferta: idOferta,
       titulo: titulo,
       urlCliente: urlCliente,
       urlPreview: urlPreview,
@@ -63,7 +69,8 @@ Future<void> mostrarCompartirOferta(
   );
 }
 
-class _CompartirOfertaHoja extends StatelessWidget {
+class _CompartirOfertaHoja extends ConsumerStatefulWidget {
+  final int idOferta;
   final String titulo;
   final String urlCliente;
   final String urlPreview;
@@ -73,6 +80,7 @@ class _CompartirOfertaHoja extends StatelessWidget {
   final String? email;
 
   const _CompartirOfertaHoja({
+    required this.idOferta,
     required this.titulo,
     required this.urlCliente,
     required this.urlPreview,
@@ -83,16 +91,49 @@ class _CompartirOfertaHoja extends StatelessWidget {
   });
 
   @override
+  ConsumerState<_CompartirOfertaHoja> createState() =>
+      _CompartirOfertaHojaState();
+}
+
+class _CompartirOfertaHojaState extends ConsumerState<_CompartirOfertaHoja> {
+  late final TextEditingController _correo = TextEditingController(
+    text: (widget.email ?? '').trim(),
+  );
+
+  /// Apagado por omisión, igual que la web: el correo lleva el link y generar
+  /// el PDF cuesta, así que solo se adjunta si el agente lo pide.
+  bool _adjuntarPdf = false;
+
+  bool _enviando = false;
+  bool _generandoPdf = false;
+
+  /// Fallo de la última acción con servidor. Se pinta DENTRO de la hoja: un
+  /// toast se va antes de que el agente lo lea y la hoja no se cierra al fallar.
+  String? _error;
+
+  /// Confirmación de la última acción con servidor.
+  String? _aviso;
+
+  @override
+  void dispose() {
+    _correo.dispose();
+    super.dispose();
+  }
+
+  bool get _ocupado => _enviando || _generandoPdf;
+
+  @override
   Widget build(BuildContext context) {
     final t = context.s;
     final tone = t.color;
-    final hayCliente = urlCliente.isNotEmpty;
-    final hayPreview = urlPreview.isNotEmpty && urlPreview != urlCliente;
+    final hayCliente = widget.urlCliente.isNotEmpty;
+    final hayPreview =
+        widget.urlPreview.isNotEmpty && widget.urlPreview != widget.urlCliente;
 
     return HojaPipeline(
       icono: Icons.ios_share_outlined,
       titulo: 'Compartir la oferta',
-      subtitulo: titulo,
+      subtitulo: widget.titulo,
       cuerpo: [
         Text(
           hayCliente
@@ -106,16 +147,18 @@ class _CompartirOfertaHoja extends StatelessWidget {
         BotonWhatsApp(
           onPressed: () => compartirPorWhatsApp(
             context,
-            mensaje: mensaje,
-            telefono: telefono,
-            clavePais: clavePais,
+            mensaje: widget.mensaje,
+            telefono: widget.telefono,
+            clavePais: widget.clavePais,
           ),
         ),
         SizedBox(height: t.space.xs),
         SButton.secondary(
           label: 'Copiar el link del cliente',
           icon: Icons.copy_outlined,
-          onPressed: hayCliente ? () => copiarLink(context, urlCliente) : null,
+          onPressed: hayCliente
+              ? () => copiarLink(context, widget.urlCliente)
+              : null,
         ),
         if (hayPreview) ...[
           SizedBox(height: t.space.xs),
@@ -124,7 +167,7 @@ class _CompartirOfertaHoja extends StatelessWidget {
             icon: Icons.visibility_outlined,
             onPressed: () => copiarLink(
               context,
-              urlPreview,
+              widget.urlPreview,
               aviso:
                   'Link de vista previa copiado. Sirve para mostrar la '
                   'oferta, no para apartar.',
@@ -135,24 +178,71 @@ class _CompartirOfertaHoja extends StatelessWidget {
         SButton.secondary(
           label: 'Abrir en el navegador',
           icon: Icons.open_in_new,
-          onPressed: () =>
-              abrirLinkCliente(context, hayCliente ? urlCliente : urlPreview),
+          onPressed: () => abrirLinkCliente(
+            context,
+            hayCliente ? widget.urlCliente : widget.urlPreview,
+          ),
         ),
         SizedBox(height: t.space.xs),
-        // Respaldo de correo: abre el cliente de correo del dispositivo con
-        // el asunto y el cuerpo ya escritos. NO es el envío desde la
-        // plataforma (eso necesita backend y no existe todavía), pero es lo
-        // que la web usa cuando no puede mandarlo ella, así que el canal
-        // deja de estar ausente.
         SButton.secondary(
-          label: 'Correo',
+          label: 'Descargar el PDF de la oferta',
+          icon: Icons.download_outlined,
+          loading: _generandoPdf,
+          loadingLabel: 'Generando el PDF...',
+          onPressed: _ocupado ? null : _descargarPdf,
+        ),
+        SizedBox(height: t.space.md),
+        const SSectionLabel(text: 'Enviar por correo'),
+        SizedBox(height: t.space.xs),
+        STextField(
+          controller: _correo,
+          label: 'Correo del prospecto',
+          hint: 'prospecto@dominio.com',
+          size: STextFieldSize.md,
+          enabled: !_ocupado,
+          keyboardType: TextInputType.emailAddress,
+          onChanged: (_) {
+            if (_error != null || _aviso != null) {
+              setState(() {
+                _error = null;
+                _aviso = null;
+              });
+            }
+          },
+        ),
+        Row(
+          children: [
+            Checkbox(
+              value: _adjuntarPdf,
+              onChanged: _ocupado
+                  ? null
+                  : (v) => setState(() => _adjuntarPdf = v ?? false),
+            ),
+            Expanded(
+              child: Text(
+                'Adjuntar el PDF de la oferta',
+                style: t.text.caption.copyWith(color: tone.fgMuted),
+              ),
+            ),
+          ],
+        ),
+        SButton(
+          label: 'Enviar desde la plataforma',
+          icon: Icons.send_outlined,
+          loading: _enviando,
+          loadingLabel: 'Enviando el correo...',
+          onPressed: _ocupado ? null : _enviarCorreo,
+        ),
+        SizedBox(height: t.space.xs),
+        SButton.ghost(
+          label: 'Abrir mi app de correo',
           icon: Icons.mail_outline,
           fullWidth: true,
           onPressed: () => compartirPorCorreo(
             context,
-            asunto: titulo,
-            cuerpo: mensaje,
-            email: email,
+            asunto: widget.titulo,
+            cuerpo: widget.mensaje,
+            email: _correo.text,
           ),
         ),
         SButton.ghost(
@@ -161,23 +251,113 @@ class _CompartirOfertaHoja extends StatelessWidget {
           fullWidth: true,
           onPressed: () => compartirLinkCliente(
             context,
-            url: hayCliente ? urlCliente : urlPreview,
-            titulo: titulo,
+            url: hayCliente ? widget.urlCliente : widget.urlPreview,
+            titulo: widget.titulo,
           ),
         ),
+        if (_error != null) ...[
+          SizedBox(height: t.space.xs),
+          Text(_error!, style: t.text.bodySmall.copyWith(color: tone.danger)),
+        ],
+        if (_aviso != null) ...[
+          SizedBox(height: t.space.xs),
+          Text(_aviso!, style: t.text.bodySmall.copyWith(color: tone.positive)),
+        ],
       ],
       nota:
-          'El correo se abre en tu app de correo. Mandarlo desde la '
-          'plataforma y descargar el PDF de la oferta todavía se hacen desde '
-          'el portal web.',
+          'El correo sale de la plataforma con el link de la oferta. El PDF se '
+          'genera al momento y su enlace caduca en un minuto, así que se '
+          'entrega en el acto.',
     );
+  }
+
+  /// Envía la oferta por correo desde la plataforma.
+  ///
+  /// El `@` se exige aquí igual que en el servidor, para no gastar una llamada
+  /// que va a volver como `email_invalido`.
+  Future<void> _enviarCorreo() async {
+    final destino = _correo.text.trim();
+    if (!destino.contains('@')) {
+      setState(() {
+        _error =
+            'Captura el correo del prospecto: hace falta un correo completo '
+            'para poder enviarlo.';
+        _aviso = null;
+      });
+      return;
+    }
+    setState(() {
+      _enviando = true;
+      _error = null;
+      _aviso = null;
+    });
+    try {
+      final envio = await ref
+          .read(pipelineAccionesProvider)
+          .enviarPorCorreo(
+            idOferta: widget.idOferta,
+            email: destino,
+            adjuntarPdf: _adjuntarPdf,
+          );
+      if (!mounted) return;
+      setState(() {
+        _enviando = false;
+        _aviso = envio.conPdf
+            ? 'Oferta enviada por correo, con el PDF adjunto.'
+            : 'Oferta enviada por correo.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _enviando = false;
+        _error = mensajeDeError(e);
+      });
+    }
+  }
+
+  /// Pide el PDF y lo entrega en el acto.
+  ///
+  /// El enlace muere al minuto, así que no se guarda en el estado ni se ofrece
+  /// para compartir: en web `downloadFile` lo baja con su nombre y en móvil lo
+  /// abre en el visor del sistema, desde donde el agente lo guarda.
+  Future<void> _descargarPdf() async {
+    setState(() {
+      _generandoPdf = true;
+      _error = null;
+      _aviso = null;
+    });
+    try {
+      final pdf = await ref
+          .read(pipelineAccionesProvider)
+          .pdfDeOferta(widget.idOferta);
+      final entregado = await downloadFile(pdf.url, pdf.nombreArchivo);
+      if (!mounted) return;
+      setState(() {
+        _generandoPdf = false;
+        _aviso = entregado
+            ? 'PDF listo: se descarga o se abre en el visor del sistema.'
+            : null;
+        _error = entregado
+            ? null
+            : 'El PDF se generó pero el sistema no pudo abrirlo. Vuelve a '
+                  'intentarlo: el enlace caduca al minuto.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _generandoPdf = false;
+        _error = mensajeDeError(e);
+      });
+    }
   }
 }
 
 /// Abre el cliente de correo del dispositivo con el asunto y el cuerpo listos.
 ///
 /// Sin [email] abre el redactor sin destinatario, para que el agente lo elija.
-/// Es el respaldo que usa la web cuando no puede enviar desde la plataforma.
+/// Convive con el envío desde la plataforma: es la única vía para escribir un
+/// cuerpo propio, copiar a alguien más o mandar la oferta cuando el envío del
+/// servidor se cae.
 Future<void> compartirPorCorreo(
   BuildContext context, {
   required String asunto,
