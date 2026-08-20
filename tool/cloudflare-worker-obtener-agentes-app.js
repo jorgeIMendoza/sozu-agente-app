@@ -13,8 +13,6 @@
 // ─── Cuando publiques en App Store: pon la URL real y cambia esto a true ───
 const IOS_DISPONIBLE = false;
 const IOS_URL = "https://apps.apple.com/mx/app/TU-APP/idXXXXXXXXX";
-// ─── Cuando el listing de Google Play este publico, cambia esto a true ───
-const ANDROID_DISPONIBLE = false;
 // ───────────────────────────────────────────────────────────────────────────
 
 // El package es el de la app de AGENTES (`sozu.applicationId` de
@@ -71,24 +69,10 @@ const PAGINA_IOS = `
      <a href="https://agentes-v2.sozu.com">agentes-v2.sozu.com</a>.</p>
 `;
 
-const PAGINA_ANDROID = `
-  <span class="badge">Próximamente</span>
-  <h1>Aún no estamos en Google Play</h1>
-  <p>La app para Android está en revisión y la publicaremos muy pronto.
-     Gracias por tu paciencia.</p>
-  <p style="opacity:.5;font-size:.85rem">Mientras tanto puedes entrar desde el
-     navegador de tu teléfono en
-     <a href="https://agentes-v2.sozu.com">agentes-v2.sozu.com</a>.</p>
-`;
-
 const PAGINA_ESCRITORIO = `
   <h1>Descarga la app de Sozu Agentes</h1>
   <p>Elige tu plataforma</p>
-  ${
-    ANDROID_DISPONIBLE
-      ? `<a class="btn" href="${ANDROID_URL}">Google Play (Android)</a>`
-      : `<span class="btn off">Google Play · Próximamente</span>`
-  }
+  <a class="btn" href="${ANDROID_URL}">Google Play (Android)</a>
   ${
     IOS_DISPONIBLE
       ? `<a class="btn" href="${IOS_URL}">App Store (iOS)</a>`
@@ -108,13 +92,7 @@ export default {
       (/Macintosh/i.test(ua) && /Mobile/i.test(ua));
     const isAndroid = /Android/i.test(ua);
 
-    // Sin listing publico, Play responde 404 y su app lo traduce a "Elemento no
-    // encontrado": el QR parece roto. La bandera evita mandar a ese callejon.
-    if (isAndroid) {
-      return ANDROID_DISPONIBLE
-        ? Response.redirect(ANDROID_URL, 302)
-        : html(PAGINA_ANDROID, "Próximamente en Google Play · Sozu");
-    }
+    if (isAndroid) return Response.redirect(ANDROID_URL, 302);
 
     if (isIOS) {
       return IOS_DISPONIBLE
